@@ -1,0 +1,8 @@
+.monaco-editor-wrapper {
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.monaco-editor-wrapper .monaco-editor {
+  padding-top: 0;
+}

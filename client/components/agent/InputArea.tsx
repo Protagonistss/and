@@ -1,0 +1,81 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { useAgentStore, useConversationStore } from '../../stores';
+import { Button } from '../common';
+import './InputArea.css';
+
+export const InputArea: React.FC = () => {
+  const [input, setInput] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { isProcessing, sendMessage, stopGeneration } = useAgentStore();
+  const { currentConversationId, createConversation } = useConversationStore();
+
+  // 自动调整高度
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+    }
+  }, [input]);
+
+  const handleSubmit = async () => {
+    if (!input.trim() || isProcessing) return;
+
+    const message = input.trim();
+    setInput('');
+
+    // 确保有会话
+    if (!currentConversationId) {
+      createConversation();
+    }
+
+    await sendMessage(message);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+
+  return (
+    <div className="input-area">
+      <div className="input-container">
+        <textarea
+          ref={textareaRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="输入消息... (Shift+Enter 换行)"
+          disabled={isProcessing}
+          rows={1}
+        />
+        <div className="input-actions">
+          {isProcessing ? (
+            <Button variant="secondary" size="sm" onClick={stopGeneration}>
+              <svg viewBox="0 0 24 24" width="16" height="16">
+                <path fill="currentColor" d="M6 6h12v12H6z" />
+              </svg>
+              停止
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleSubmit}
+              disabled={!input.trim()}
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16">
+                <path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+              </svg>
+              发送
+            </Button>
+          )}
+        </div>
+      </div>
+      <p className="input-hint">
+        提示：Agent 可以执行命令和修改文件，请仔细审查操作
+      </p>
+    </div>
+  );
+};
