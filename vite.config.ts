@@ -10,6 +10,8 @@ export default defineConfig({
     strictPort: true,
   },
   build: {
+    outDir: "../dist",
+    emptyDir: true,
     target: ["es2021", "chrome100"],
     minify: !process.env.TAURI_DEBUG,
     sourcemap: !!process.env.TAURI_DEBUG,
