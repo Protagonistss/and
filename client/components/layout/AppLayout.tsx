@@ -18,14 +18,32 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SimpleLogo } from "../shared";
+import { useProjectStore, useEditorStore } from "@/stores";
 
 export function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(true);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
+  const { openProject, closeProject } = useProjectStore();
+  const { closeAllFiles } = useEditorStore();
 
   const currentMode = location.pathname.includes("agent") ? "agent" : location.pathname.includes("editor") ? "editor" : "home";
+
+  // 打开新项目的处理函数
+  const handleNewProject = async () => {
+    // 先关闭当前项目并清除所有打开的文件
+    closeProject();
+    closeAllFiles();
+
+    await openProject();
+
+    // 检查是否成功打开了项目
+    const { currentProject } = useProjectStore.getState();
+    if (currentProject) {
+      navigate("/editor");
+    }
+  };
 
   return (
     <div className="h-screen w-full bg-obsidian flex flex-col text-zinc-100 overflow-hidden">
@@ -60,7 +78,7 @@ export function AppLayout() {
                                 icon={PencilLine}
                                 label="New Project"
                                 active={currentMode === "editor"}
-                                onClick={() => navigate("/editor")}
+                                onClick={handleNewProject}
                               />
                               <NavItem
                                 icon={Bot}
