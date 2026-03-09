@@ -111,7 +111,16 @@ export function AppLayout() {
                   </div>
 
                   <div className="mt-auto pb-4 px-6 pt-2">
-                    <div className="flex items-center gap-2 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer group w-fit">
+                    <div
+                      onClick={() => navigate("/settings")}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      className={cn(
+                        "flex items-center gap-2 transition-colors cursor-pointer group w-fit",
+                        location.pathname === "/settings"
+                          ? "text-zinc-200"
+                          : "text-zinc-500 hover:text-zinc-300"
+                      )}
+                    >
                       <Settings size={14} className="group-hover:rotate-45 transition-transform duration-300" />
                       <span className="text-[13px]">Settings</span>
                     </div>

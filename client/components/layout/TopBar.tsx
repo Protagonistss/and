@@ -97,7 +97,16 @@ export function TopBar({ onToggleRightSidebar, rightSidebarOpen = false }: TopBa
         <button className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors">
           <Share2 size={18} />
         </button>
-        <button className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors">
+        <button
+          onClick={() => navigate("/settings")}
+          className={cn(
+            "p-2 rounded-md transition-all",
+            location.pathname === "/settings"
+              ? "bg-zinc-800 text-zinc-100"
+              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+          )}
+          title="Settings"
+        >
           <Settings size={18} />
         </button>
         <div className="h-4 w-px bg-graphite" />

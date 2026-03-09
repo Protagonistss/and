@@ -3,6 +3,7 @@ import { AppLayout } from "../components/layout/AppLayout";
 import { HomeView } from "../components/views/HomeView";
 import { EditorView } from "../components/views/EditorView";
 import { AgentView } from "../components/views/AgentView";
+import { SettingsView } from "../components/views/SettingsView";
 
 export const router = createBrowserRouter([
   {
@@ -12,6 +13,7 @@ export const router = createBrowserRouter([
       { index: true, Component: HomeView },
       { path: "editor", Component: EditorView },
       { path: "agent", Component: AgentView },
+      { path: "settings", Component: SettingsView },
     ],
   },
 ]);
