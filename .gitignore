@@ -69,3 +69,11 @@ coverage/
 # Tauri bundle (optional: 若希望提交安装包可注释)
 # src-tauri/WixTools/
 # src-tauri/gen/
+
+# 自动生成的应用图标（源文件: native/icons/app-icon.svg）
+native/icons/*.png
+native/icons/icon.ico
+native/icons/icon.icns
+native/icons/android/
+native/icons/ios/
+native/icons/*backup*
