@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "and",
+  "productName": "Slate Editor",
   "version": "0.1.0",
-  "identifier": "com.and.app",
+  "identifier": "com.slate.editor",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:5173",
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Protagonist Agent",
+        "title": "Slate Editor",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
@@ -40,8 +40,8 @@
       "digestAlgorithm": "sha256",
       "timestampUrl": ""
     },
-    "longDescription": "",
-    "shortDescription": "",
+    "longDescription": "Slate Editor - An intelligent code editor with AI assistance",
+    "shortDescription": "AI-powered code editor",
     "resources": [],
     "externalBin": [],
     "copyright": "",

@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "generate-icons": "node server/scripts/generate-icons.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "2.10.1",
@@ -17,19 +18,30 @@
     "@tauri-apps/plugin-http": "2.5.7",
     "@tauri-apps/plugin-shell": "2.3.5",
     "@tauri-apps/plugin-store": "2.4.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "date-fns": "4.1.0",
+    "lucide-react": "^0.487.0",
     "monaco-editor": "^0.52.0",
+    "motion": "^12.23.24",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-resizable-panels": "^2.1.7",
+    "react-router": "^7.13.0",
+    "tailwind-merge": "^3.2.0",
     "uuid": "13.0.0",
     "zustand": "5.0.11"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.1.12",
     "@tauri-apps/cli": "^2.0.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/uuid": "10.0.0",
     "@vitejs/plugin-react": "^4.3.3",
+    "png-to-ico": "3.0.1",
+    "sharp": "0.34.5",
+    "tailwindcss": "^4.1.12",
     "typescript": "~5.6.2",
     "vite": "^5.4.10"
   }

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#525252;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#404040;stop-opacity:0.9" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded rectangle -->
+  <rect width="512" height="512" rx="96" fill="url(#bgGradient)" />
+
+  <!-- Top highlight -->
+  <rect x="0" y="0" width="512" height="16" fill="white" fill-opacity="0.1" />
+
+  <!-- Logo bars (rotated 15 degrees) -->
+  <g transform="rotate(15, 256, 256)">
+    <!-- Left bar (lighter) -->
+    <rect x="176" y="128" width="48" height="192" rx="8" fill="#f4f4f5" />
+
+    <!-- Right bar (darker) -->
+    <rect x="264" y="160" width="48" height="192" rx="8" fill="#71717a" />
+  </g>
+</svg>

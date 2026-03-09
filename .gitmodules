@@ -1,0 +1,3 @@
+[submodule "Slate"]
+	path = Slate
+	url = git@github.com:tdsomething/Slate.git

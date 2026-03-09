@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+/* Tailwind v4 使用 CSS 变量定义自定义颜色 */
+@layer base {
+  :root {
+    /* Slate Design System Colors */
+    --color-obsidian: #0A0A0A;
+    --color-charcoal: #121212;
+    --color-graphite: #262626;
+    --color-fog-blue: #5E7BA3;
+    --color-dusty-purple: #7C6F91;
+    --color-warm-gray: #4A4A4A;
+
+    /* Background and foreground */
+    --background: var(--color-obsidian);
+    --foreground: #E5E7EB;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-graphite);
+    border-radius: 10px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-warm-gray);
+  }
+
+  /* Selection */
+  ::selection {
+    background: rgba(59, 130, 246, 0.3);
+  }
+
+  /* Focus outline */
+  :focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+  }
+}
+
+/* Slate Components Styles */
+.slate-glass {
+  background: rgba(18, 18, 18, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(38, 38, 38, 0.5);
+}
+
+.slate-panel {
+  background: var(--color-charcoal);
+  border: 1px solid var(--color-graphite);
+  border-radius: 12px;
+}
+
+.ai-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Scrollbar thin variant */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-graphite) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--color-graphite);
+  border-radius: 10px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--color-warm-gray);
+}
+
+/* Semantic color classes for Slate design system */
+.bg-obsidian { background-color: #0A0A0A; }
+.bg-charcoal { background-color: #121212; }
+.bg-graphite { background-color: #262626; }
+.bg-fog-blue { background-color: #5E7BA3; }
+.bg-dusty-purple { background-color: #7C6F91; }
+.bg-warm-gray { background-color: #4A4A4A; }
+
+.border-obsidian { border-color: #0A0A0A; }
+.border-charcoal { border-color: #121212; }
+.border-graphite { border-color: #262626; }
+.border-fog-blue { border-color: #5E7BA3; }
+.border-dusty-purple { border-color: #7C6F91; }
+.border-warm-gray { border-color: #4A4A4A; }
+
+.text-obsidian { color: #0A0A0A; }
+.text-charcoal { color: #121212; }
+.text-graphite { color: #262626; }
+.text-fog-blue { color: #5E7BA3; }
+.text-dusty-purple { color: #7C6F91; }
+.text-warm-gray { color: #4A4A4A; }
