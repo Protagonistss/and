@@ -1,5 +1,6 @@
 import * as dialog from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
+import { normalizePath } from '../utils/pathUtils';
 
 // Rust 后端返回的目录条目类型
 interface WorkspaceDirEntry {
@@ -87,7 +88,7 @@ async function scanDirectory(dirPath: string, baseDir: string = ''): Promise<Pro
     }
 
     // 构建相对路径
-    const baseDirNormalized = baseDir.replace(/\\/g, '/');
+    const baseDirNormalized = normalizePath(baseDir);
     const relativePath = baseDirNormalized ? `${baseDirNormalized}/${entry.name}` : entry.name;
 
     if (entry.isDirectory) {
@@ -126,7 +127,7 @@ async function scanDirectory(dirPath: string, baseDir: string = ''): Promise<Pro
 
 // 获取文件的完整路径（用于读取内容）
 function getFullFilePath(projectPath: string, relativePath: string): string {
-  const projectPathNormalized = projectPath.replace(/\\/g, '/');
+  const projectPathNormalized = normalizePath(projectPath);
   return `${projectPathNormalized}/${relativePath}`;
 }
 

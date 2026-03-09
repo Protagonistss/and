@@ -8,17 +8,14 @@ import {
   ChevronDown,
   LayoutGrid,
   Folder,
-  FileCode,
-  FileJson,
-  FileText,
-  File,
-  Image
+  File
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router";
 import { useProjectStore, useEditorStore } from "@/stores";
 import { ProjectFile } from "@/services/project";
+import { getFileIcon } from "@/utils";
 
 interface FileItemProps {
   file: ProjectFile;
@@ -31,31 +28,6 @@ interface NavItem {
   icon: React.ComponentType<{ size?: number }>;
   label: string;
   action?: () => void;
-}
-
-// 文件图标映射
-function getFileIcon(filename: string): React.ComponentType<{ size?: number; className?: string }> {
-  const ext = filename.substring(filename.lastIndexOf('.')).toLowerCase();
-
-  const iconMap: Record<string, React.ComponentType<{ size?: number; className?: string }> | null> = {
-    '.ts': FileCode,
-    '.tsx': FileCode,
-    '.js': FileCode,
-    '.jsx': FileCode,
-    '.css': FileCode,
-    '.scss': FileCode,
-    '.html': FileCode,
-    '.json': FileJson,
-    '.md': FileText,
-    '.txt': FileText,
-    '.png': Image,
-    '.jpg': Image,
-    '.jpeg': Image,
-    '.svg': Image,
-    '.gif': Image,
-  };
-
-  return iconMap[ext] || File;
 }
 
 export function LeftSidebar() {

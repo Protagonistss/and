@@ -19,8 +19,5 @@ export type {
 export { useAgentStore } from './agentStore';
 export type { AgentStatus, ToolCallRecord, AgentState } from './agentStore';
 
-export { useWorkspaceStore } from './workspaceStore';
-export type { FileTreeNode, WorkspaceState } from './workspaceStore';
-
 export { useProjectStore } from './projectStore';
 export type { ProjectState, ProjectInfo, ProjectFile } from './projectStore';

@@ -2,6 +2,8 @@
  * Tauri 文件系统 API 封装
  */
 
+import { normalizePath } from '../../utils/pathUtils';
+
 // 检查是否在 Tauri 环境中（兼容 v2 默认注入）
 const isTauri =
   typeof window !== 'undefined' &&
@@ -14,13 +16,6 @@ export interface FileInfo {
   isFile: boolean;
   size?: number;
   modified?: number;
-}
-
-/**
- * 前端统一使用正斜杠路径，便于状态对比
- */
-function toUiPath(path: string): string {
-  return path.replace(/\\/g, '/');
 }
 
 /**
@@ -38,7 +33,7 @@ function buildPathCandidates(path: string): string[] {
 
   if (isWindowsAbsolutePath(path)) {
     const backslashPath = path.replace(/\//g, '\\');
-    const slashPath = path.replace(/\\/g, '/');
+    const slashPath = normalizePath(path);
 
     if (!candidates.includes(backslashPath)) {
       candidates.push(backslashPath);
@@ -224,7 +219,7 @@ export async function readDir(path: string): Promise<FileInfo[]> {
   if (Array.isArray(backendEntries)) {
     return backendEntries.map((entry) => ({
       ...entry,
-      path: toUiPath(entry.path),
+      path: normalizePath(entry.path),
     }));
   }
 
@@ -250,7 +245,7 @@ export async function readDir(path: string): Promise<FileInfo[]> {
 
   return entries.map((entry) => ({
     name: entry.name || '',
-    path: toUiPath(joinChildPath(resolvedPath, entry.name || '')),
+    path: normalizePath(joinChildPath(resolvedPath, entry.name || '')),
     isDirectory: entry.isDirectory,
     isFile: entry.isFile,
   }));

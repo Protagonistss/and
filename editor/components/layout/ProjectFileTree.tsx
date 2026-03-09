@@ -4,49 +4,16 @@ import { join } from "@tauri-apps/api/path";
 import { cn } from "@/lib/utils";
 import { useProjectStore, useEditorStore } from "@/stores";
 import { ProjectFile } from "@/services/project";
+import { getFileIcon } from "@/utils";
 import {
   FolderOpen,
   ChevronRight,
   ChevronDown,
-  Folder,
-  FileCode,
-  FileJson,
-  FileText,
-  File,
-  Image
+  Folder
 } from "lucide-react";
 
 interface ProjectFileTreeProps {
   className?: string;
-}
-
-// 文件图标映射
-function getFileIcon(filename: string): React.ComponentType<{ size?: number; className?: string }> {
-  const ext = filename.substring(filename.lastIndexOf('.')).toLowerCase();
-
-  const iconMap: Record<string, React.ComponentType<{ size?: number; className?: string }> | null> = {
-    '.ts': FileCode,
-    '.tsx': FileCode,
-    '.js': FileCode,
-    '.jsx': FileCode,
-    '.css': FileCode,
-    '.scss': FileCode,
-    '.sass': FileCode,
-    '.html': FileCode,
-    '.json': FileJson,
-    '.md': FileText,
-    '.txt': FileText,
-    '.png': Image,
-    '.jpg': Image,
-    '.jpeg': Image,
-    '.svg': Image,
-    '.gif': Image,
-    '.yaml': FileText,
-    '.yml': FileText,
-    '.toml': FileText,
-  };
-
-  return iconMap[ext] || File;
 }
 
 export function ProjectFileTree({ className }: ProjectFileTreeProps) {

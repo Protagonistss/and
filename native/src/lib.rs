@@ -14,11 +14,8 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
-            commands::get_system_info,
-            commands::get_installed_tools,
             commands::read_workspace_dir,
             commands::read_workspace_text_file,
-            commands::is_directory,
             commands::get_config,
             commands::update_settings,
             commands::get_config_path,

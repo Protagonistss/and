@@ -42,21 +42,3 @@ pub async fn read_workspace_text_file(path: String) -> Result<String, String> {
     fs::read_to_string(&file_path)
         .map_err(|e| format!("Failed to read text file '{}': {}", file_path.display(), e))
 }
-
-#[tauri::command]
-pub async fn is_directory(path: String) -> Result<bool, String> {
-    let path_buf = PathBuf::from(&path);
-    println!("[is_directory] Checking path: {}", path);
-    println!("[is_directory] PathBuf: {:?}", path_buf);
-
-    let metadata = fs::metadata(&path_buf)
-        .map_err(|e| {
-            println!("[is_directory] Error reading metadata: {}", e);
-            format!("Failed to read metadata '{}': {}", path_buf.display(), e)
-        })?;
-
-    let is_dir = metadata.is_dir();
-    println!("[is_directory] Result: is_dir={}, is_file={}", is_dir, metadata.is_file());
-
-    Ok(is_dir)
-}

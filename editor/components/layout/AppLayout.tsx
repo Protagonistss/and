@@ -264,13 +264,3 @@ function HistoryItem({ title, time, desc, type }: HistoryItemProps) {
     </div>
   );
 }
-
-// Legacy export for compatibility
-export interface AppLayoutProps {
-  children: React.ReactNode;
-  agentPanel?: React.ReactNode;
-}
-
-export const AppLayoutLegacy = ({ children, agentPanel }: AppLayoutProps) => {
-  return <AppLayout />;
-};
