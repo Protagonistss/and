@@ -4,10 +4,14 @@ import {
   Bot,
   Settings,
   Share2,
-  History
+  History,
+  Minus,
+  Square,
+  X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo, SimpleLogo } from "../shared";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface TopBarProps {
   onToggleRightSidebar?: () => void;
@@ -21,15 +25,39 @@ export function TopBar({ onToggleRightSidebar, rightSidebarOpen = false }: TopBa
   const isAgent = location.pathname === "/agent";
   const isHome = location.pathname === "/";
 
+  // 窗口控制函数
+  const handleMinimize = () => {
+    getCurrentWindow().minimize();
+  };
+
+  const handleMaximize = () => {
+    getCurrentWindow().toggleMaximize();
+  };
+
+  const handleClose = () => {
+    getCurrentWindow().close();
+  };
+
+  // 拖拽处理
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // 只在非按钮区域拖动
+    if ((e.target as HTMLElement).closest('button')) return;
+    getCurrentWindow().startDragging();
+  };
+
   return (
-    <header className="h-14 border-b border-graphite flex items-center justify-between px-4 z-50 bg-obsidian/50 backdrop-blur-md">
+    <header
+      className="h-14 border-b border-graphite flex items-center justify-between px-4 z-50 bg-obsidian/50 backdrop-blur-md"
+      onMouseDown={handleMouseDown}
+      data-tauri-drag-region
+    >
       {/* Left section: Logo */}
-      <div className="flex items-center gap-4 w-1/3">
+      <div className="flex items-center gap-4 w-1/3" data-tauri-drag-region>
         <Logo />
       </div>
 
       {/* Middle section: Mode Switcher */}
-      <div className="flex-1 flex justify-center">
+      <div className="flex-1 flex justify-center" data-tauri-drag-region>
         {!isHome && (
           <div className="slate-glass p-1 rounded-full flex items-center gap-1">
             <ModeButton
@@ -70,6 +98,31 @@ export function TopBar({ onToggleRightSidebar, rightSidebarOpen = false }: TopBa
         <div className="h-4 w-px bg-graphite" />
         <div className="h-8 w-8 rounded-full bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center">
           <SimpleLogo size={20} />
+        </div>
+
+        {/* Window Controls */}
+        <div className="flex items-center -mr-2">
+          <button
+            onClick={handleMinimize}
+            className="p-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors rounded-tl-lg rounded-bl-lg"
+            title="最小化"
+          >
+            <Minus size={14} strokeWidth={2} />
+          </button>
+          <button
+            onClick={handleMaximize}
+            className="p-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+            title="最大化"
+          >
+            <Square size={12} strokeWidth={2} />
+          </button>
+          <button
+            onClick={handleClose}
+            className="p-2.5 text-zinc-400 hover:text-white hover:bg-red-600 transition-colors rounded-tr-lg rounded-br-lg"
+            title="关闭"
+          >
+            <X size={14} strokeWidth={2} />
+          </button>
         </div>
       </div>
     </header>

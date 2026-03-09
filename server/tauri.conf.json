@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Slate Editor",
+        "title": "Slate",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
