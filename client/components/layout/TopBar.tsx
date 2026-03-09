@@ -40,8 +40,9 @@ export function TopBar({ onToggleRightSidebar, rightSidebarOpen = false }: TopBa
 
   // 拖拽处理
   const handleMouseDown = (e: React.MouseEvent) => {
-    // 只在非按钮区域拖动
-    if ((e.target as HTMLElement).closest('button')) return;
+    // 只在非按钮区域拖动，排除所有 button 和 a 元素
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'BUTTON' || target.tagName === 'A' || target.closest('button') || target.closest('a')) return;
     getCurrentWindow().startDragging();
   };
 
@@ -77,7 +78,11 @@ export function TopBar({ onToggleRightSidebar, rightSidebarOpen = false }: TopBa
       </div>
 
       {/* Right section: Actions */}
-      <div className="flex items-center gap-3 w-1/3 justify-end">
+      <div
+        className="flex items-center gap-3 w-1/3 justify-end"
+        style={{ pointerEvents: "none" }}
+      >
+        <div style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: "12px" }}>
         {onToggleRightSidebar && (
           <button
             onClick={onToggleRightSidebar}
@@ -96,7 +101,12 @@ export function TopBar({ onToggleRightSidebar, rightSidebarOpen = false }: TopBa
           <Settings size={18} />
         </button>
         <div className="h-4 w-px bg-graphite" />
-        <div className="h-8 w-8 rounded-full bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center">
+        <div
+          onClick={() => navigate("/")}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="h-8 w-8 rounded-full bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center hover:bg-zinc-700 hover:border-zinc-600 transition-all cursor-pointer select-none"
+          title="回到首页"
+        >
           <SimpleLogo size={20} />
         </div>
 
@@ -123,6 +133,7 @@ export function TopBar({ onToggleRightSidebar, rightSidebarOpen = false }: TopBa
           >
             <X size={14} strokeWidth={2} />
           </button>
+        </div>
         </div>
       </div>
     </header>
