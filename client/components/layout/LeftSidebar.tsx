@@ -10,19 +10,20 @@ import {
   Folder,
   FileCode,
   FileJson,
-  FileText
+  FileText,
+  File,
+  Image
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router";
+import { useProjectStore, useEditorStore } from "@/stores";
+import { ProjectFile } from "@/services/project";
 
 interface FileItemProps {
-  name: string;
-  type: "folder" | "file";
-  isOpen?: boolean;
-  isActive?: boolean;
-  icon?: React.ComponentType<{ size?: number; className?: string }>;
-  children?: React.ReactNode;
+  file: ProjectFile;
+  level?: number;
+  onFileClick?: (file: ProjectFile) => void;
 }
 
 interface NavItem {
@@ -32,9 +33,38 @@ interface NavItem {
   action?: () => void;
 }
 
+// 文件图标映射
+function getFileIcon(filename: string): React.ComponentType<{ size?: number; className?: string }> {
+  const ext = filename.substring(filename.lastIndexOf('.')).toLowerCase();
+
+  const iconMap: Record<string, React.ComponentType<{ size?: number; className?: string }> | null> = {
+    '.ts': FileCode,
+    '.tsx': FileCode,
+    '.js': FileCode,
+    '.jsx': FileCode,
+    '.css': FileCode,
+    '.scss': FileCode,
+    '.html': FileCode,
+    '.json': FileJson,
+    '.md': FileText,
+    '.txt': FileText,
+    '.png': Image,
+    '.jpg': Image,
+    '.jpeg': Image,
+    '.svg': Image,
+    '.gif': Image,
+  };
+
+  return iconMap[ext] || File;
+}
+
 export function LeftSidebar() {
   const [activeTab, setActiveTab] = useState("files");
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
+
+  const { currentProject, projectFiles } = useProjectStore();
+  const { openFile, openTabs } = useEditorStore();
 
   const navItems: NavItem[] = [
     { id: "files", icon: Files, label: "Files" },
@@ -46,6 +76,30 @@ export function LeftSidebar() {
   const handleTabClick = (item: NavItem) => {
     setActiveTab(item.id);
     if (item.action) item.action();
+  };
+
+  const toggleFolder = (path: string) => {
+    setExpandedFolders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(path)) {
+        newSet.delete(path);
+      } else {
+        newSet.add(path);
+      }
+      return newSet;
+    });
+  };
+
+  const handleFileClick = (file: ProjectFile) => {
+    if (file.type === 'folder') {
+      toggleFolder(file.path);
+    } else {
+      openFile(file.path, file.name, file.content, file.language);
+    }
+  };
+
+  const isFileActive = (file: ProjectFile) => {
+    return openTabs.some(tab => tab.path === file.path && tab.isActive);
   };
 
   return (
@@ -77,24 +131,33 @@ export function LeftSidebar() {
         {activeTab === "files" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between text-xs font-semibold text-zinc-500 uppercase tracking-widest">
-              <span>EXPLORER</span>
-              <button className="p-1 hover:text-zinc-200 hover:bg-[#262626] rounded-md transition-colors">
-                <Plus size={14} />
-              </button>
+              <span>{currentProject ? currentProject.name : 'EXPLORER'}</span>
+              {currentProject && (
+                <button className="p-1 hover:text-zinc-200 hover:bg-[#262626] rounded-md transition-colors">
+                  <Plus size={14} />
+                </button>
+              )}
             </div>
 
-            <div className="space-y-1">
-              <FileItem name="src" type="folder" isOpen={true}>
-                <FileItem name="components" type="folder" isOpen={true} icon={Folder}>
-                  <FileItem name="Button.tsx" type="file" icon={FileCode} />
-                  <FileItem name="Header.tsx" type="file" icon={FileCode} />
-                </FileItem>
-                <FileItem name="App.tsx" type="file" icon={FileCode} isActive={true} />
-                <FileItem name="index.css" type="file" icon={FileCode} />
-              </FileItem>
-              <FileItem name="package.json" type="file" icon={FileJson} />
-              <FileItem name="README.md" type="file" icon={FileText} />
-            </div>
+            {!currentProject ? (
+              <div className="text-center py-8">
+                <Folder size={32} className="mx-auto text-zinc-700 mb-3" />
+                <p className="text-sm text-zinc-600">No project open</p>
+                <p className="text-xs text-zinc-700 mt-1">Select a folder to get started</p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {projectFiles.map(file => (
+                  <FileItem
+                    key={file.path}
+                    file={file}
+                    onFileClick={handleFileClick}
+                    expandedFolders={expandedFolders}
+                    isFileActive={isFileActive}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -131,31 +194,62 @@ export function LeftSidebar() {
   );
 }
 
-function FileItem({ name, type, isOpen = false, isActive = false, icon: Icon, children }: FileItemProps) {
+interface FileItemProps {
+  file: ProjectFile;
+  level?: number;
+  onFileClick?: (file: ProjectFile) => void;
+  expandedFolders?: Set<string>;
+  isFileActive?: (file: ProjectFile) => boolean;
+}
+
+function FileItem({
+  file,
+  level = 0,
+  onFileClick,
+  expandedFolders = new Set(),
+  isFileActive = () => false
+}: FileItemProps) {
+  const isFolder = file.type === 'folder';
+  const isExpanded = expandedFolders.has(file.path);
+  const isActive = !isFolder && isFileActive(file);
+  const FileIcon = getFileIcon(file.name);
+
   return (
     <div>
       <div
+        onClick={() => onFileClick?.(file)}
         className={cn(
           "flex items-center gap-2 py-1.5 px-3 rounded-lg text-sm transition-colors cursor-pointer group",
           isActive
             ? "bg-blue-600/10 text-blue-400 border border-blue-600/20"
             : "text-zinc-400 hover:bg-[#262626] hover:text-zinc-200 border border-transparent"
         )}
+        style={{ paddingLeft: `${12 + level * 16}px` }}
       >
-        {type === "folder" ? (
-          isOpen ? <ChevronDown size={14} className="text-zinc-600" /> : <ChevronRight size={14} className="text-zinc-600" />
+        {isFolder ? (
+          isExpanded ? <ChevronDown size={14} className="text-zinc-600" /> : <ChevronRight size={14} className="text-zinc-600" />
         ) : (
           <div className="w-3.5 h-3.5" />
         )}
-        {type === "folder" && (
-          isOpen ? <FolderOpen size={14} className="text-blue-400" /> : <Folder size={14} className="text-blue-400" />
+        {isFolder ? (
+          isExpanded ? <FolderOpen size={14} className="text-blue-400" /> : <Folder size={14} className="text-blue-400" />
+        ) : (
+          <FileIcon size={14} className="text-zinc-500" />
         )}
-        {Icon && type === "file" && <Icon size={14} className="text-zinc-500" />}
-        <span className="flex-1 truncate">{name}</span>
+        <span className="flex-1 truncate">{file.name}</span>
       </div>
-      {isOpen && children && (
-        <div className="ml-4 space-y-1 border-l border-[#262626] pl-2 mt-0.5">
-          {children}
+      {isFolder && isExpanded && file.children && (
+        <div className="space-y-1">
+          {file.children.map(child => (
+            <FileItem
+              key={child.path}
+              file={child}
+              level={level + 1}
+              onFileClick={onFileClick}
+              expandedFolders={expandedFolders}
+              isFileActive={isFileActive}
+            />
+          ))}
         </div>
       )}
     </div>

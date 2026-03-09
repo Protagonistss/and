@@ -1,6 +1,7 @@
 import { Outlet, useLocation, useNavigate } from "react-router";
 import { useState } from "react";
 import { TopBar } from "./TopBar";
+import { ProjectFileTree } from "./ProjectFileTree";
 import {
   Panel,
   PanelGroup,
@@ -11,11 +12,6 @@ import {
   PencilLine,
   Bot,
   Home,
-  Folder,
-  FolderOpen,
-  FileCode,
-  FileJson,
-  FileText,
   ChevronRight,
   ChevronDown,
   Settings
@@ -79,19 +75,8 @@ export function AppLayout() {
                     )}
 
                     {currentMode === "editor" && (
-                      <section className="flex-1">
-                        <div className="space-y-0.5">
-                          <FileNode name="src" type="folder" isOpen>
-                            <FileNode name="components" type="folder" isOpen>
-                              <FileNode name="Button.tsx" type="file" icon={FileCode} />
-                              <FileNode name="Header.tsx" type="file" icon={FileCode} />
-                            </FileNode>
-                            <FileNode name="App.tsx" type="file" icon={FileCode} active />
-                            <FileNode name="index.css" type="file" icon={FileCode} />
-                          </FileNode>
-                          <FileNode name="package.json" type="file" icon={FileJson} />
-                          <FileNode name="README.md" type="file" icon={FileText} />
-                        </div>
+                      <section className="flex-1 flex flex-col overflow-hidden">
+                        <ProjectFileTree className="flex-1" />
                       </section>
                     )}
 
@@ -212,44 +197,6 @@ function NavItem({ icon: Icon, label, active = false, onClick }: NavItemProps) {
     >
       <Icon size={16} />
       <span>{label}</span>
-    </div>
-  );
-}
-
-interface FileNodeProps {
-  name: string;
-  type: 'folder' | 'file';
-  isOpen?: boolean;
-  icon?: React.ComponentType<{ size?: number; className?: string }>;
-  active?: boolean;
-  children?: React.ReactNode;
-}
-
-function FileNode({ name, type, isOpen, icon: Icon, active, children }: FileNodeProps) {
-  return (
-    <div>
-      <div className={cn(
-        "flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all",
-        active ? "bg-zinc-800/80 text-zinc-100" : "text-zinc-500 hover:bg-zinc-800/40 hover:text-zinc-300"
-      )}>
-        {type === 'folder' ? (
-          <>
-            {isOpen ? <ChevronDown size={14} className="text-zinc-500" /> : <ChevronRight size={14} className="text-zinc-500" />}
-            {isOpen ? <FolderOpen size={14} className="text-fog-blue" /> : <Folder size={14} className="text-fog-blue" />}
-          </>
-        ) : (
-          <>
-            <div className="w-[14px]" />
-            {Icon && <Icon size={14} className="text-zinc-500" />}
-          </>
-        )}
-        <span className="truncate">{name}</span>
-      </div>
-      {isOpen && children && (
-        <div className="pl-3 ml-[11px] border-l border-zinc-800/50 flex flex-col gap-0.5 mt-0.5">
-          {children}
-        </div>
-      )}
     </div>
   );
 }

@@ -15,6 +15,7 @@ pub fn run() {
             commands::get_installed_tools,
             commands::read_workspace_dir,
             commands::read_workspace_text_file,
+            commands::is_directory,
         ])
         .setup(|_app| Ok(()))
         .run(tauri::generate_context!())
