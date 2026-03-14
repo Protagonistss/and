@@ -21,7 +21,8 @@ import {
 import { cn } from "@/lib/utils";
 import { ChatPanel, ToolCallDisplay } from "@/components/agent";
 import { useAgent } from "@/hooks";
-import { useConversationStore, useEditorStore, useMcpStore, useProjectStore } from "@/stores";
+import { useConversationStore, useEditorStore, useMcpStore, useProjectStore, useUIStore } from "@/stores";
+import { useConfigStore } from "@/stores/configStore";
 import type { Message } from "@/services/llm/types";
 
 function extractTextContent(message: Message | undefined): string {
@@ -147,7 +148,11 @@ export function AgentView() {
   const navigate = useNavigate();
   const { currentProject } = useProjectStore();
   const { servers, tools } = useMcpStore();
-  const { status, isProcessing, currentToolCalls, sendMessage, stopGeneration, reset } = useAgent();
+  const addToast = useUIStore((state) => state.addToast);
+  const currentProvider = useConfigStore((state) => state.currentProvider);
+  const apiKeys = useConfigStore((state) => state.apiKeys);
+  const { status, isProcessing, currentToolCalls, sendMessage, stopGeneration, reset, error, clearError } =
+    useAgent();
   const activeFile = useEditorStore((state) =>
     state.activeFilePath
       ? state.openFiles.find((item) => item.path === state.activeFilePath) || null
@@ -173,6 +178,8 @@ export function AgentView() {
     [visibleMessages]
   );
   const [goalDraft, setGoalDraft] = useState("");
+  const [messageDraft, setMessageDraft] = useState("");
+  const providerReady = currentProvider === "ollama" || Boolean(apiKeys[currentProvider]);
 
   useEffect(() => {
     const text = extractTextContent(latestUserMessage);
@@ -194,6 +201,14 @@ export function AgentView() {
       : latestAssistantMessage
       ? "AI is waiting for your approval..."
       : "Agent is ready for the next instruction.";
+
+  useEffect(() => {
+    if (error && !hasSession) {
+      addToast({ type: "error", message: error });
+      clearError();
+    }
+  }, [addToast, clearError, error, hasSession]);
+
   const steps = [
     {
       id: 1,
@@ -249,18 +264,60 @@ export function AgentView() {
   ];
 
   const handleStart = async (goal: string) => {
-    await sendMessage(goal);
+    const nextGoal = goal.trim();
+    if (!nextGoal) {
+      return;
+    }
+
+    if (!providerReady) {
+      addToast({
+        type: "error",
+        message: `当前 ${currentProvider} 未配置 API Key，请先到 Settings > AI Models 配置。`,
+      });
+      return;
+    }
+
+    setGoalDraft(nextGoal);
+    setMessageDraft("");
+    await sendMessage(nextGoal);
   };
 
   const handleRunGoal = async () => {
-    if (!goalDraft.trim()) return;
+    if (!goalDraft.trim() || isProcessing) return;
+    if (!providerReady) {
+      addToast({
+        type: "error",
+        message: `当前 ${currentProvider} 未配置 API Key，请先到 Settings > AI Models 配置。`,
+      });
+      return;
+    }
     await sendMessage(goalDraft.trim());
+  };
+
+  const handleSendMessage = async () => {
+    const nextMessage = messageDraft.trim();
+    if (!nextMessage || isProcessing) {
+      return;
+    }
+
+    if (!providerReady) {
+      addToast({
+        type: "error",
+        message: `当前 ${currentProvider} 未配置 API Key，请先到 Settings > AI Models 配置。`,
+      });
+      return;
+    }
+
+    setMessageDraft("");
+    setGoalDraft(nextMessage);
+    await sendMessage(nextMessage);
   };
 
   const handleNewSession = () => {
     createConversation();
     reset();
     setGoalDraft("");
+    setMessageDraft("");
   };
 
   const handleEditCode = () => {
@@ -434,7 +491,16 @@ export function AgentView() {
             </div>
 
             <div className="flex-1 min-h-0">
-              <ChatPanel />
+              <ChatPanel
+                messages={visibleMessages}
+                inputValue={messageDraft}
+                isProcessing={isProcessing}
+                error={error}
+                onInputChange={setMessageDraft}
+                onSubmit={handleSendMessage}
+                onStop={stopGeneration}
+                onClearError={clearError}
+              />
             </div>
 
             <div className="p-3 border-t border-graphite bg-charcoal flex items-center justify-between">

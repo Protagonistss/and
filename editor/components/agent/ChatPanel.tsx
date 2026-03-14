@@ -1,52 +1,66 @@
 import React, { useRef, useEffect } from 'react';
-import { useConversationStore, useAgentStore } from '../../stores';
+import type { Message } from '../../services/llm/types';
 import { MessageList } from './MessageList';
 import { InputArea } from './InputArea';
 import './ChatPanel.css';
 
-export const ChatPanel: React.FC = () => {
-  const { currentConversationId, createConversation, getCurrentConversation } = useConversationStore();
-  const { error, clearError } = useAgentStore();
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+interface ChatPanelProps {
+  messages: Message[];
+  inputValue: string;
+  isProcessing: boolean;
+  error: string | null;
+  onInputChange: (value: string) => void;
+  onSubmit: () => void | Promise<void>;
+  onStop: () => void;
+  onClearError: () => void;
+}
 
-  // 获取当前会话（用于监听消息变化）
-  const conversation = getCurrentConversation();
+export const ChatPanel: React.FC<ChatPanelProps> = ({
+  messages,
+  inputValue,
+  isProcessing,
+  error,
+  onInputChange,
+  onSubmit,
+  onStop,
+  onClearError,
+}) => {
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // 自动滚动到底部 - 当消息数量变化时滚动
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [conversation?.messages.length]);
-
-  // 确保有当前会话
-  useEffect(() => {
-    if (!currentConversationId) {
-      createConversation();
-    }
-  }, [currentConversationId, createConversation]);
+  }, [messages]);
 
   // 清除错误
   useEffect(() => {
     if (error) {
-      const timer = setTimeout(clearError, 5000);
+      const timer = setTimeout(onClearError, 5000);
       return () => clearTimeout(timer);
     }
-  }, [error, clearError]);
+  }, [error, onClearError]);
 
   return (
     <div className="chat-panel">
       <div className="chat-messages">
-        <MessageList />
+        <MessageList messages={messages} />
         <div ref={messagesEndRef} />
       </div>
 
       {error && (
         <div className="chat-error">
           <span>{error}</span>
-          <button onClick={clearError}>×</button>
+          <button onClick={onClearError}>×</button>
         </div>
       )}
 
-      <InputArea />
+      <InputArea
+        value={inputValue}
+        isProcessing={isProcessing}
+        onChange={onInputChange}
+        onSubmit={onSubmit}
+        onStop={onStop}
+      />
     </div>
   );
 };

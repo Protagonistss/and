@@ -103,10 +103,15 @@ const renderContent = (content: string | ContentBlock[]): React.ReactNode => {
 };
 
 export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
-  const isUser = message.role === 'user';
+  const toolOnlyMessage =
+    Array.isArray(message.content) &&
+    message.content.length > 0 &&
+    message.content.every((block) => block.type === 'tool_result' || block.type === 'tool_use');
+  const isUser = message.role === 'user' && !toolOnlyMessage;
+  const roleClassName = toolOnlyMessage ? 'tool' : isUser ? 'user' : 'assistant';
 
   return (
-    <div className={`message-item ${isUser ? 'user' : 'assistant'}`}>
+    <div className={`message-item ${roleClassName}`}>
       {isUser ? <UserIcon /> : <AssistantIcon />}
       <div className="message-content">
         <div className="message-text">{renderContent(message.content)}</div>

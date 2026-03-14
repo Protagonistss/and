@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { RouterProvider, createBrowserRouter } from "react-router";
 import { AppLayout } from "./components/layout/AppLayout";
+import { ToastContainer } from "./components/common";
 import { HomeView } from "./components/views/HomeView";
 import { EditorView } from "./components/views/EditorView";
 import { AgentView } from "./components/views/AgentView";
@@ -49,7 +50,12 @@ function App() {
     },
   ]);
 
-  return <RouterProvider router={appRouter} />;
+  return (
+    <>
+      <RouterProvider router={appRouter} />
+      <ToastContainer />
+    </>
+  );
 }
 
 export default App;

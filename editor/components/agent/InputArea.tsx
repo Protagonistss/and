@@ -1,12 +1,24 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { useAgentStore, useConversationStore } from '../../stores';
+import React, { useRef, useEffect, useCallback } from 'react';
 import './InputArea.css';
 
-export const InputArea: React.FC = () => {
-  const [input, setInput] = useState('');
+interface InputAreaProps {
+  value: string;
+  isProcessing: boolean;
+  onChange: (value: string) => void;
+  onSubmit: () => void | Promise<void>;
+  onStop: () => void;
+  placeholder?: string;
+}
+
+export const InputArea: React.FC<InputAreaProps> = ({
+  value,
+  isProcessing,
+  onChange,
+  onSubmit,
+  onStop,
+  placeholder = '输入消息... (Shift+Enter 换行)',
+}) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { isProcessing, sendMessage, stopGeneration } = useAgentStore();
-  const { currentConversationId, createConversation } = useConversationStore();
 
   // 自动调整高度
   useEffect(() => {
@@ -14,38 +26,24 @@ export const InputArea: React.FC = () => {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
-  }, [input]);
-
-  const handleSubmit = useCallback(async () => {
-    if (!input.trim() || isProcessing) return;
-
-    const message = input.trim();
-    setInput('');
-
-    // 确保有会话
-    if (!currentConversationId) {
-      createConversation();
-    }
-
-    await sendMessage(message);
-  }, [input, isProcessing, currentConversationId, createConversation, sendMessage]);
+  }, [value]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit();
+      void onSubmit();
     }
-  }, [handleSubmit]);
+  }, [onSubmit]);
 
   return (
     <div className="input-area">
       <div className="input-container">
         <textarea
           ref={textareaRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="输入消息... (Shift+Enter 换行)"
+          placeholder={placeholder}
           disabled={isProcessing}
           rows={1}
         />
@@ -54,7 +52,7 @@ export const InputArea: React.FC = () => {
             <button
               type="button"
               className="input-action-button input-action-stop"
-              onClick={stopGeneration}
+              onClick={onStop}
               title="停止生成"
             >
               <svg viewBox="0 0 24 24" width="16" height="16">
@@ -65,8 +63,8 @@ export const InputArea: React.FC = () => {
             <button
               type="button"
               className="input-action-button input-action-send"
-              onClick={handleSubmit}
-              disabled={!input.trim()}
+              onClick={() => void onSubmit()}
+              disabled={!value.trim()}
               title="发送消息"
             >
               <svg viewBox="0 0 24 24" width="16" height="16">

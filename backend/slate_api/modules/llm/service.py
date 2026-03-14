@@ -1,0 +1,274 @@
+from __future__ import annotations
+
+import json
+import secrets
+from typing import Any, AsyncIterator
+
+import httpx
+from sqlalchemy.orm import Session
+
+from slate_api.core.config import settings
+from slate_api.core.schemas import ChatMessage
+from slate_api.infra.database import utcnow
+from slate_api.infra.llm.providers import LLMGatewayError, list_provider_specs, resolve_provider
+from slate_api.infra.models import LLMUsageLog, User
+from slate_api.modules.llm.schemas import LLMChatRequest, LLMModelRead, LLMProviderRead
+
+
+def get_provider_catalog() -> list[LLMProviderRead]:
+    return [
+        LLMProviderRead(
+            name=spec.name,
+            display_name=spec.display_name,
+            configured=spec.configured,
+            base_url=spec.base_url or None,
+            models=list(spec.models),
+            default_model=spec.default_model,
+        )
+        for spec in list_provider_specs()
+    ]
+
+
+def get_model_catalog() -> list[LLMModelRead]:
+    items: list[LLMModelRead] = []
+    for spec in list_provider_specs():
+        for model in spec.models:
+            items.append(LLMModelRead(provider=spec.name, model=model, configured=spec.configured))
+    return items
+
+
+def format_messages_for_openai(messages: list[ChatMessage]) -> list[dict[str, Any]]:
+    formatted: list[dict[str, Any]] = []
+
+    for message in messages:
+        if isinstance(message.content, str):
+            formatted.append({"role": message.role, "content": message.content})
+            continue
+
+        text_blocks = [block for block in message.content if block.type == "text"]
+        tool_use_blocks = [block for block in message.content if block.type == "tool_use"]
+        tool_result_blocks = [block for block in message.content if block.type == "tool_result"]
+        image_blocks = [block for block in message.content if block.type == "image"]
+
+        if message.role == "assistant" and tool_use_blocks:
+            formatted.append(
+                {
+                    "role": "assistant",
+                    "content": "".join(block.text for block in text_blocks) or None,
+                    "tool_calls": [
+                        {
+                            "id": block.id,
+                            "type": "function",
+                            "function": {
+                                "name": block.name,
+                                "arguments": json.dumps(block.input, ensure_ascii=False),
+                            },
+                        }
+                        for block in tool_use_blocks
+                    ],
+                }
+            )
+            continue
+
+        if message.role == "user" and tool_result_blocks:
+            text_content = "".join(block.text for block in text_blocks)
+            if text_content:
+                formatted.append({"role": "user", "content": text_content})
+            for block in tool_result_blocks:
+                formatted.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": block.tool_use_id,
+                        "content": block.content,
+                    }
+                )
+            continue
+
+        if image_blocks:
+            formatted.append(
+                {
+                    "role": message.role,
+                    "content": [
+                        *[
+                            {
+                                "type": "text",
+                                "text": block.text,
+                            }
+                            for block in text_blocks
+                        ],
+                        *[
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": (
+                                        f"data:{block.source.media_type};base64,{block.source.data}"
+                                        if block.source.type == "base64"
+                                        else block.source.data
+                                    )
+                                },
+                            }
+                            for block in image_blocks
+                        ],
+                    ],
+                }
+            )
+            continue
+
+        formatted.append(
+            {
+                "role": message.role,
+                "content": "".join(block.text for block in text_blocks),
+            }
+        )
+
+    return formatted
+
+
+def format_tools_for_openai(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": tool["name"],
+                "description": tool["description"],
+                "parameters": tool["input_schema"],
+            },
+        }
+        for tool in tools
+    ]
+
+
+def sse_event(payload: dict[str, Any]) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _safe_json_loads(raw: str) -> dict[str, Any]:
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+
+
+async def stream_chat_completion(
+    db: Session,
+    user: User,
+    request: LLMChatRequest,
+) -> AsyncIterator[str]:
+    provider, model = resolve_provider(request.provider, request.model)
+    usage_log = LLMUsageLog(
+        request_id=secrets.token_urlsafe(16),
+        user_id=user.id,
+        conversation_id=request.conversation_id,
+        provider=provider.name,
+        model=model,
+        status="started",
+    )
+    db.add(usage_log)
+    db.commit()
+    db.refresh(usage_log)
+
+    body: dict[str, Any] = {
+        "model": model,
+        "messages": format_messages_for_openai(request.messages),
+        "stream": True,
+    }
+    if request.max_tokens is not None:
+        body["max_tokens"] = request.max_tokens
+    if request.temperature is not None:
+        body["temperature"] = request.temperature
+    if request.tools:
+        body["tools"] = format_tools_for_openai([tool.model_dump() for tool in request.tools])
+        body["tool_choice"] = "auto"
+
+    pending_tool_calls: dict[int, dict[str, str]] = {}
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {provider.api_key}",
+    }
+
+    try:
+        timeout = httpx.Timeout(settings.llm_request_timeout_seconds, connect=20.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream(
+                "POST",
+                f"{provider.base_url.rstrip('/')}/chat/completions",
+                headers=headers,
+                json=body,
+            ) as response:
+                if response.status_code >= 400:
+                    message = (await response.aread()).decode("utf-8", errors="ignore")
+                    usage_log.status = "error"
+                    usage_log.error = message or "上游模型调用失败"
+                    usage_log.completed_at = utcnow()
+                    db.add(usage_log)
+                    db.commit()
+                    yield sse_event({"type": "error", "error": usage_log.error})
+                    return
+
+                async for raw_line in response.aiter_lines():
+                    line = raw_line.strip()
+                    if not line or not line.startswith("data: "):
+                        continue
+
+                    data = line[6:]
+                    if data == "[DONE]":
+                        usage_log.status = "completed"
+                        usage_log.completed_at = utcnow()
+                        db.add(usage_log)
+                        db.commit()
+                        yield sse_event({"type": "done"})
+                        return
+
+                    try:
+                        parsed = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+
+                    choice = (parsed.get("choices") or [{}])[0]
+                    delta = choice.get("delta") or {}
+                    finish_reason = choice.get("finish_reason")
+
+                    if delta.get("content"):
+                        yield sse_event({"type": "content", "content": delta["content"]})
+
+                    if delta.get("tool_calls"):
+                        for tool_call in delta["tool_calls"]:
+                            index = tool_call.get("index", 0)
+                            current = pending_tool_calls.get(index, {"id": "", "name": "", "arguments": ""})
+                            pending_tool_calls[index] = {
+                                "id": tool_call.get("id") or current["id"],
+                                "name": tool_call.get("function", {}).get("name") or current["name"],
+                                "arguments": current["arguments"]
+                                + (tool_call.get("function", {}).get("arguments") or ""),
+                            }
+
+                    if finish_reason == "tool_calls":
+                        for tool_call in pending_tool_calls.values():
+                            if not tool_call["name"]:
+                                continue
+                            yield sse_event(
+                                {
+                                    "type": "tool_use",
+                                    "toolUse": {
+                                        "id": tool_call["id"],
+                                        "name": tool_call["name"],
+                                        "input": _safe_json_loads(tool_call["arguments"]),
+                                    },
+                                }
+                            )
+                        pending_tool_calls.clear()
+
+    except Exception as exc:
+        usage_log.status = "error"
+        usage_log.error = str(exc)
+        usage_log.completed_at = utcnow()
+        db.add(usage_log)
+        db.commit()
+        yield sse_event({"type": "error", "error": str(exc)})
+        return
+
+    usage_log.status = "completed"
+    usage_log.completed_at = utcnow()
+    db.add(usage_log)
+    db.commit()
+    yield sse_event({"type": "done"})
