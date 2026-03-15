@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "motion/react";
-import { ExternalLink, LogIn, Plus } from "lucide-react";
+import { LogIn, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import { cn } from "@/lib/utils";
@@ -327,13 +327,8 @@ export function AIModelsSettings() {
       <div>
         <h2 className="mb-1 text-[20px] font-medium text-zinc-100">AI Providers</h2>
         <p className="text-[13px] text-zinc-500">
-          Providers use OpenAI-compatible endpoints and can be added dynamically instead of relying on built-in
-          presets.
+          Configure your API keys. Models will be available instantly in your workspace.
         </p>
-        <div className="mt-2 flex items-center gap-1.5 text-[11px] text-zinc-600">
-          <ExternalLink size={12} />
-          <span className="truncate">{getBackendBaseUrl()}</span>
-        </div>
       </div>
 
       <SignInGuide user={user} />

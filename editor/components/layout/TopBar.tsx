@@ -60,7 +60,7 @@ export function TopBar({ onToggleRightSidebar, rightSidebarOpen = false }: TopBa
 
   return (
     <header
-      className="h-14 border-b border-graphite flex items-center justify-between px-4 z-50 bg-obsidian/50 backdrop-blur-md"
+      className="h-12 border-b border-graphite flex items-center justify-between px-3 z-50 bg-obsidian/50 backdrop-blur-md"
       onMouseDown={handleMouseDown}
       data-tauri-drag-region
     >
@@ -70,9 +70,9 @@ export function TopBar({ onToggleRightSidebar, rightSidebarOpen = false }: TopBa
       </div>
 
       {/* Middle section: Mode Switcher */}
-      <div className="flex-1 flex justify-center" data-tauri-drag-region>
+      <div className="flex-1 flex justify-center scale-95 origin-center" data-tauri-drag-region>
         {!isHome && (
-          <div className="slate-glass p-1 rounded-full flex items-center gap-1">
+          <div className="slate-glass p-0.5 rounded-full flex items-center gap-0.5">
             <ModeButton
               isActive={isEditor}
               icon={PencilLine}
@@ -91,81 +91,81 @@ export function TopBar({ onToggleRightSidebar, rightSidebarOpen = false }: TopBa
 
       {/* Right section: Actions */}
       <div
-        className="flex items-center gap-3 w-1/3 justify-end"
+        className="flex items-center w-1/3 justify-end"
         style={{ pointerEvents: "none" }}
       >
-        <div style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: "12px" }}>
-        {onToggleRightSidebar && (
+        <div className="flex items-center gap-1.5 pr-1" style={{ pointerEvents: "auto" }}>
+          {onToggleRightSidebar && (
+            <button
+              onClick={onToggleRightSidebar}
+              className={cn(
+                "p-1.5 rounded-md transition-all",
+                rightSidebarOpen ? "bg-zinc-800 text-zinc-100" : "hover:bg-zinc-800 text-zinc-500"
+              )}
+            >
+              <History size={16} />
+            </button>
+          )}
+          <button className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors">
+            <Share2 size={16} />
+          </button>
           <button
-            onClick={onToggleRightSidebar}
+            onClick={() => navigate("/settings")}
             className={cn(
-              "p-2 rounded-md transition-all",
-              rightSidebarOpen ? "bg-zinc-800 text-zinc-100" : "hover:bg-zinc-800 text-zinc-500"
+              "p-1.5 rounded-md transition-all",
+              location.pathname === "/settings"
+                ? "bg-zinc-800 text-zinc-100"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
             )}
+            title="Settings"
           >
-            <History size={18} />
+            <Settings size={16} />
           </button>
-        )}
-        <button className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors">
-          <Share2 size={18} />
-        </button>
-        <button
-          onClick={() => navigate("/settings")}
-          className={cn(
-            "p-2 rounded-md transition-all",
-            location.pathname === "/settings"
-              ? "bg-zinc-800 text-zinc-100"
-              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
-          )}
-          title="Settings"
-        >
-          <Settings size={18} />
-        </button>
-        <div className="h-4 w-px bg-graphite" />
-        <div
-          onClick={() => navigate("/settings?tab=account")}
-          onMouseDown={(e) => e.stopPropagation()}
-          className="h-8 w-8 rounded-full bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center hover:bg-zinc-700 hover:border-zinc-600 transition-all cursor-pointer select-none"
-          title={authUser ? "打开账号设置" : "登录与账号设置"}
-        >
-          {showAvatarImage ? (
-            <img
-              src={authUser?.avatarUrl ?? ""}
-              alt={authUser?.username || "User avatar"}
-              className="h-full w-full object-cover"
-              onError={() => setAvatarFailed(true)}
-            />
-          ) : authUser ? (
-            <span className="text-[12px] font-semibold text-zinc-100">{userInitial}</span>
-          ) : (
-            <User size={16} className="text-zinc-300" />
-          )}
-        </div>
+          <div className="h-3.5 w-px bg-graphite" />
+          <div
+            onClick={() => navigate("/settings?tab=account")}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="h-7 w-7 ml-1 rounded-full bg-zinc-800 border border-zinc-700 overflow-hidden flex items-center justify-center hover:bg-zinc-700 hover:border-zinc-600 transition-all cursor-pointer select-none"
+            title={authUser ? "打开账号设置" : "登录与账号设置"}
+          >
+            {showAvatarImage ? (
+              <img
+                src={authUser?.avatarUrl ?? ""}
+                alt={authUser?.username || "User avatar"}
+                className="h-full w-full object-cover"
+                onError={() => setAvatarFailed(true)}
+              />
+            ) : authUser ? (
+              <span className="text-[12px] font-semibold text-zinc-100">{userInitial}</span>
+            ) : (
+              <User size={14} className="text-zinc-300" />
+            )}
+          </div>
 
-        {/* Window Controls */}
-        <div className="flex items-center -mr-2">
-          <button
-            onClick={handleMinimize}
-            className="p-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors rounded-tl-lg rounded-bl-lg"
-            title="最小化"
-          >
-            <Minus size={14} strokeWidth={2} />
-          </button>
-          <button
-            onClick={handleMaximize}
-            className="p-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
-            title="最大化"
-          >
-            <Square size={12} strokeWidth={2} />
-          </button>
-          <button
-            onClick={handleClose}
-            className="p-2.5 text-zinc-400 hover:text-white hover:bg-red-600 transition-colors rounded-tr-lg rounded-br-lg"
-            title="关闭"
-          >
-            <X size={14} strokeWidth={2} />
-          </button>
-        </div>
+          {/* Window Controls */}
+          <div className="flex items-center -mr-1">
+            <button
+              onClick={handleMinimize}
+              className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors rounded-tl-md rounded-bl-md"
+              title="最小化"
+            >
+              <Minus size={12} strokeWidth={2} />
+            </button>
+            <button
+              onClick={handleMaximize}
+              className="p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+              title="最大化"
+            >
+              <Square size={11} strokeWidth={2} />
+            </button>
+            <button
+              onClick={handleClose}
+              className="p-2 text-zinc-400 hover:text-white hover:bg-red-600 transition-colors rounded-tr-md rounded-br-md"
+              title="关闭"
+            >
+              <X size={12} strokeWidth={2} />
+            </button>
+          </div>
         </div>
       </div>
     </header>

@@ -235,7 +235,7 @@ export function AppLayout() {
           {/* Main Content Area */}
           <Panel id="main-content" order={2}>
             <main className="h-full relative overflow-hidden">
-              <div className="absolute inset-0 bg-[#0a0a0a] rounded-xl sm:rounded-2xl border border-white/[0.04] shadow-[0_0_40px_-15px_rgba(0,0,0,0.5)] overflow-hidden m-0.5 sm:m-2 lg:m-4">
+              <div className="absolute inset-0 bg-[#0a0a0a] rounded-xl sm:rounded-2xl border border-white/[0.04] shadow-[0_0_40px_-15px_rgba(0,0,0,0.5)] overflow-hidden m-0.5 sm:mb-2 sm:mt-1 sm:mx-2 lg:mb-4 lg:mt-2 lg:mx-4">
                 <div className="h-full w-full overflow-hidden relative rounded-xl sm:rounded-2xl flex flex-col">
                   {isSettingsRoute ? (
                     <div className="h-full w-full">

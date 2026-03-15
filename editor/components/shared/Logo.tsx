@@ -9,11 +9,11 @@ interface LogoProps {
 export function Logo({ className, to = "/" }: LogoProps) {
   const logoElement = (
     <div className={cn("flex items-center justify-center group", className)}>
-      <div className="relative w-8 h-8 rounded-xl bg-gradient-to-b from-zinc-700 to-zinc-800/80 flex items-center justify-center border border-zinc-600/50 shadow-sm group-hover:border-zinc-500 transition-all duration-300 overflow-hidden">
+      <div className="relative w-7 h-7 rounded-lg bg-gradient-to-b from-zinc-700 to-zinc-800/80 flex items-center justify-center border border-zinc-600/50 shadow-sm group-hover:border-zinc-500 transition-all duration-300 overflow-hidden">
         <div className="absolute inset-x-0 top-0 h-px bg-white/10" />
-        <div className="flex gap-[3px] rotate-[15deg] group-hover:rotate-[0deg] transition-transform duration-500 ease-out">
-          <div className="w-[4px] h-[12px] bg-zinc-100 rounded-[1px]" />
-          <div className="w-[4px] h-[12px] bg-zinc-500 rounded-[1px] translate-y-[4px] group-hover:translate-y-0 transition-transform duration-500 ease-out" />
+        <div className="flex gap-[2px] rotate-[15deg] group-hover:rotate-[0deg] transition-transform duration-500 ease-out">
+          <div className="w-[3px] h-[10px] bg-zinc-100 rounded-[1px]" />
+          <div className="w-[3px] h-[10px] bg-zinc-500 rounded-[1px] translate-y-[3px] group-hover:translate-y-0 transition-transform duration-500 ease-out" />
         </div>
       </div>
     </div>
