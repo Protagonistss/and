@@ -43,14 +43,6 @@ export function TopBar({ onToggleRightSidebar, rightSidebarOpen = false }: TopBa
     getCurrentWindow().close();
   };
 
-  // 拖拽处理
-  const handleMouseDown = (e: React.MouseEvent) => {
-    // 只在非按钮区域拖动，排除所有 button 和 a 元素
-    const target = e.target as HTMLElement;
-    if (target.tagName === 'BUTTON' || target.tagName === 'A' || target.closest('button') || target.closest('a')) return;
-    getCurrentWindow().startDragging();
-  };
-
   const userInitial = authUser?.username.trim().charAt(0).toUpperCase() || "";
   const showAvatarImage = Boolean(authUser?.avatarUrl && !avatarFailed);
 
@@ -61,7 +53,6 @@ export function TopBar({ onToggleRightSidebar, rightSidebarOpen = false }: TopBa
   return (
     <header
       className="h-12 border-b border-graphite flex items-center justify-between px-3 z-50 bg-obsidian/50 backdrop-blur-md"
-      onMouseDown={handleMouseDown}
       data-tauri-drag-region
     >
       {/* Left section: Logo */}
