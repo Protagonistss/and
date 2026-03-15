@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { useLocation, useNavigate } from "react-router";
+import { LLM_PROVIDERS as PROVIDERS } from "@/constants/llmProviders";
 import { cn } from "@/lib/utils";
 import { openUrl } from "@/services/tauri/shell";
 import { isTauriEnvironment } from "@/services/tauri/deepLink";
@@ -43,45 +44,6 @@ const ACCOUNT_PROVIDERS: { id: OAuthProvider; label: string }[] = [
   { id: "gitee", label: "Gitee" },
   { id: "google", label: "Google" },
 ];
-
-const PROVIDERS: {
-  id: LLMProvider;
-  name: string;
-  mark: string;
-  description: string;
-  models: string[];
-  badgeClass: string;
-}[] = [
-  {
-    id: "anthropic",
-    name: "Anthropic",
-    mark: "A",
-    description: "用于复杂推理和稳定的工具调用。",
-    models: [
-      "claude-sonnet-4-6-20250514",
-      "claude-3-5-sonnet-20241022",
-      "claude-3-5-haiku-20241022",
-      "claude-3-opus-20240229",
-    ],
-    badgeClass: "text-[#d97757] border-[#d97757]/20 bg-[#d97757]/10",
-  },
-  {
-    id: "openai",
-    name: "OpenAI",
-    mark: "O",
-    description: "适合通用对话、快速输出和多模态场景。",
-    models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
-    badgeClass: "text-emerald-500 border-emerald-500/20 bg-emerald-500/10",
-  },
-  {
-    id: "ollama",
-    name: "Ollama",
-    mark: "L",
-    description: "本地模型运行时，适合离线开发环境。",
-    models: ["llama3.2", "qwen2.5", "mistral", "codellama"],
-    badgeClass: "text-zinc-300 border-zinc-700 bg-zinc-800/60",
-  },
-] as const;
 
 type SettingsTab = (typeof NAV_ITEMS)[number]["id"];
 
@@ -528,10 +490,11 @@ function ModelsSettings({
   setLLMConfig,
   setApiKey,
 }: ModelsSettingsProps) {
-  const activeProvider = PROVIDERS.find((provider) => provider.id === currentProvider) || PROVIDERS[0];
   const addToast = useUIStore((state) => state.addToast);
   const [editingProvider, setEditingProvider] = useState<LLMProvider | null>(null);
   const [isAddingProvider, setIsAddingProvider] = useState(false);
+  const [customProviderName, setCustomProviderName] = useState("");
+  const [customModelName, setCustomModelName] = useState("");
   const [customBaseUrl, setCustomBaseUrl] = useState("");
   const [customProviderKey, setCustomProviderKey] = useState("");
   const [isSavingCustomProvider, setIsSavingCustomProvider] = useState(false);
@@ -556,6 +519,27 @@ function ModelsSettings({
     }));
   };
 
+  const openProviderConfig = (provider: LLMProvider) => {
+    setCurrentProvider(provider);
+    setEditingProvider(provider);
+  };
+
+  const handleSelectModel = (provider: LLMProvider, model: string) => {
+    const providerConfig = llmConfigs[provider];
+    const configured =
+      provider === "ollama"
+        ? Boolean((providerConfig.baseUrl || "").trim())
+        : Boolean(apiKeys[provider]?.trim());
+
+    if (!configured) {
+      openProviderConfig(provider);
+      return;
+    }
+
+    setCurrentProvider(provider);
+    setLLMConfig(provider, { model });
+  };
+
   const saveProviderConfig = (provider: LLMProvider) => {
     const nextValue = providerDrafts[provider].trim();
     if (provider === "ollama") {
@@ -565,6 +549,13 @@ function ModelsSettings({
     }
     setCurrentProvider(provider);
     setEditingProvider(null);
+  };
+
+  const resetCustomProviderForm = () => {
+    setCustomProviderName("");
+    setCustomModelName("");
+    setCustomBaseUrl("");
+    setCustomProviderKey("");
   };
 
   const handleSaveCustomProvider = () => {
@@ -580,8 +571,7 @@ function ModelsSettings({
       });
       setIsSavingCustomProvider(false);
       setIsAddingProvider(false);
-      setCustomBaseUrl("");
-      setCustomProviderKey("");
+      resetCustomProviderForm();
     }, 400);
   };
 
@@ -592,89 +582,16 @@ function ModelsSettings({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
       transition={{ duration: 0.25 }}
-      className="max-w-[600px] space-y-12"
+      className="max-w-[600px] space-y-8"
     >
       <div>
-        <h2 className="mb-1 text-[20px] font-medium text-zinc-100">AI Models</h2>
+        <h2 className="mb-1 text-[20px] font-medium text-zinc-100">AI Providers</h2>
         <p className="text-[13px] text-zinc-500">
-          Configure language models and API providers for the workspace.
+          Configure your API keys. Models will be available instantly in your workspace.
         </p>
       </div>
 
-      <section className="space-y-4">
-        <h3 className="text-[11px] font-medium uppercase tracking-widest text-zinc-600">
-          Model Routing
-        </h3>
-        <div className="space-y-1">
-          <div className="group -mx-3 flex items-center justify-between rounded-lg p-3 transition-colors hover:bg-white/[0.03]">
-            <div className="flex flex-col">
-              <span className="text-[13px] text-zinc-300">Editor Model</span>
-              <span className="text-[11px] text-zinc-500">Fast and concise</span>
-            </div>
-            <div className="relative">
-              <select
-                value={currentConfig.model}
-                onChange={(event) => setLLMConfig(currentProvider, { model: event.target.value })}
-                className="min-w-[160px] cursor-pointer appearance-none rounded-md border border-white/10 bg-zinc-900 px-3 py-1.5 pr-8 text-[13px] text-zinc-300 transition-colors hover:border-zinc-700 focus:border-zinc-500 focus:outline-none"
-              >
-                {activeProvider.models.map((model) => (
-                  <option key={model} value={model}>
-                    {model}
-                  </option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500">
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path
-                    d="M3 4.5L6 7.5L9 4.5"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="group -mx-3 flex items-center justify-between rounded-lg p-3 transition-colors hover:bg-white/[0.03]">
-            <div className="flex flex-col">
-              <span className="text-[13px] text-zinc-300">Agent Model</span>
-              <span className="text-[11px] text-zinc-500">Complex reasoning</span>
-            </div>
-            <div className="relative">
-              <select
-                value={currentConfig.model}
-                onChange={(event) => setLLMConfig(currentProvider, { model: event.target.value })}
-                className="min-w-[160px] cursor-pointer appearance-none rounded-md border border-white/10 bg-zinc-900 px-3 py-1.5 pr-8 text-[13px] text-zinc-300 transition-colors hover:border-zinc-700 focus:border-zinc-500 focus:outline-none"
-              >
-                {activeProvider.models.map((model) => (
-                  <option key={model} value={model}>
-                    {model}
-                  </option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500">
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path
-                    d="M3 4.5L6 7.5L9 4.5"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="space-y-4">
-        <h3 className="text-[11px] font-medium uppercase tracking-widest text-zinc-600">
-          Providers
-        </h3>
-        <div className="space-y-1">
+      <section className="space-y-1">
           {PROVIDERS.map((provider) => {
             const isActive = currentProvider === provider.id;
             const configured =
@@ -683,72 +600,208 @@ function ModelsSettings({
                 : Boolean(apiKeys[provider.id]?.trim());
             const isEditing = editingProvider === provider.id;
             const draftValue = providerDrafts[provider.id];
+            const providerConfig = llmConfigs[provider.id];
+            const selectedModel = providerConfig.model || provider.models[0];
             const detailText =
               provider.id === "ollama"
                 ? llmConfigs.ollama.baseUrl || "http://localhost:11434"
                 : maskSecret(apiKeys[provider.id]);
-            const placeholder =
-              provider.id === "ollama" ? "http://localhost:11434" : "Enter API Key...";
+            const placeholder = provider.id === "ollama" ? "http://localhost:11434" : "sk-...";
+            const statusLabel = configured
+              ? provider.id === "ollama"
+                ? "Configured"
+                : "Connected"
+              : "Not configured";
+            const actionLabel = configured ? "Config" : "Connect";
 
             return (
               <div key={provider.id} className="space-y-2">
-                {configured && !isEditing ? (
-                  <div className="group -mx-3 flex items-center justify-between rounded-lg p-3 transition-colors hover:bg-white/[0.03]">
-                    <div className="flex flex-col">
-                      <span className="text-[13px] text-zinc-300">{provider.name}</span>
-                      <span className="mt-0.5 flex items-center gap-1.5 text-[11px] text-emerald-500/80">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500/80" />
-                        Connected
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="max-w-[220px] truncate font-mono text-[12px] text-zinc-600">
-                        {detailText}
-                      </span>
-                      <button
-                        onClick={() => {
-                          setCurrentProvider(provider.id);
-                          setEditingProvider(provider.id);
-                        }}
-                        className="rounded px-2 py-1 text-[12px] text-zinc-500 opacity-0 transition-colors hover:text-zinc-300 group-hover:opacity-100"
-                      >
-                        {provider.id === "ollama" && !isActive ? "Use" : "Replace"}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="group -mx-3 flex items-center justify-between rounded-lg p-3 transition-colors hover:bg-white/[0.03]">
-                    <div className="flex flex-col">
-                      <span className="text-[13px] text-zinc-300">{provider.name}</span>
-                      <span className="mt-0.5 text-[11px] text-zinc-600">
-                        {provider.id === "ollama" ? "Local runtime" : "Not connected"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type={provider.id === "ollama" ? "text" : "password"}
-                        value={draftValue}
-                        onChange={(event) => updateProviderDraft(provider.id, event.target.value)}
-                        placeholder={placeholder}
-                        className="w-[180px] rounded-md border border-white/10 bg-zinc-900 px-3 py-1.5 font-mono text-[12px] text-zinc-300 transition-colors placeholder:text-zinc-700 focus:border-zinc-500 focus:outline-none"
-                      />
-                      <button
-                        onClick={() => saveProviderConfig(provider.id)}
-                        className="rounded-md border border-white/5 bg-white/10 px-3 py-1.5 text-[12px] text-zinc-300 transition-colors hover:bg-white/20"
-                      >
-                        Save
-                      </button>
-                      {isEditing && (
-                        <button
-                          onClick={() => setEditingProvider(null)}
-                          className="px-2 py-1 text-[12px] text-zinc-500 transition-colors hover:text-zinc-300"
+                <div
+                  className={cn(
+                    "group relative -mx-3 rounded-lg p-3 transition-colors",
+                    isActive ? "bg-white/[0.02]" : "hover:bg-white/[0.03]"
+                  )}
+                >
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span
+                          className={cn(
+                            "text-[13px] font-medium",
+                            configured ? "text-zinc-300" : "text-zinc-400"
+                          )}
                         >
-                          Cancel
-                        </button>
+                          {provider.name}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={cn(
+                              "h-1.5 w-1.5 rounded-full",
+                              configured ? "bg-emerald-500/80" : "bg-zinc-700"
+                            )}
+                          />
+                          <span
+                            className={cn(
+                              "text-[11px]",
+                              configured ? "text-zinc-500" : "text-zinc-600"
+                            )}
+                          >
+                            {statusLabel}
+                          </span>
+                          {isActive && (
+                            <span className="rounded-full border border-white/10 bg-white/[0.03] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-500">
+                              Active
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {!isEditing && (
+                        <div className="absolute right-4 top-3 flex items-center gap-2 bg-[#050505] pl-2 opacity-0 shadow-[0_0_12px_8px_#050505] transition-opacity group-hover:opacity-100">
+                          {configured && (
+                            <span className="max-w-[160px] truncate font-mono text-[11px] text-zinc-600">
+                              {detailText}
+                            </span>
+                          )}
+                          {configured && !isActive && (
+                            <button
+                              onClick={() => setCurrentProvider(provider.id)}
+                              className="px-2 py-1 text-[12px] text-zinc-500 transition-colors hover:text-zinc-300"
+                            >
+                              Use
+                            </button>
+                          )}
+                          <button
+                            onClick={() => openProviderConfig(provider.id)}
+                            className={cn(
+                              "transition-colors",
+                              configured
+                                ? "px-2 py-1 text-[12px] text-zinc-500 hover:text-zinc-300"
+                                : "rounded border border-white/5 bg-white/10 px-3 py-1 text-[12px] text-zinc-200 hover:bg-white/15"
+                            )}
+                          >
+                            {actionLabel}
+                          </button>
+                        </div>
                       )}
                     </div>
+
+                    <div className={cn("flex flex-wrap items-center gap-1.5", !configured && "opacity-50")}>
+                      {provider.models.map((model) => {
+                        const isSelected = isActive && selectedModel === model;
+
+                        return (
+                          <button
+                            key={model}
+                            type="button"
+                            onClick={() => handleSelectModel(provider.id, model)}
+                            className={cn(
+                              "rounded-md border px-2 py-1 text-[10px] font-medium transition-colors",
+                              isSelected
+                                ? "border-white/15 bg-white/[0.08] text-zinc-200"
+                                : "border-white/5 bg-white/[0.02] text-zinc-400 hover:border-white/10 hover:text-zinc-300"
+                            )}
+                          >
+                            {model}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                )}
+                </div>
+
+                <AnimatePresence initial={false}>
+                  {isEditing && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-2 mb-4 flex flex-col gap-4 rounded-lg border border-white/5 bg-white/[0.01] px-3 py-4">
+                        <div>
+                          <h4 className="text-[13px] font-medium text-zinc-300">{provider.name}</h4>
+                          <p className="mt-0.5 text-[11px] text-zinc-500">
+                            {provider.id === "ollama"
+                              ? "Configure your local runtime endpoint and default model."
+                              : "Configure your API key and default model."}
+                          </p>
+                        </div>
+
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-4">
+                            <label className="w-24 flex-shrink-0 text-[12px] text-zinc-400">
+                              {provider.id === "ollama" ? "Base URL" : "API Key"}
+                            </label>
+                            <input
+                              type={provider.id === "ollama" ? "text" : "password"}
+                              value={draftValue}
+                              onChange={(event) => updateProviderDraft(provider.id, event.target.value)}
+                              placeholder={placeholder}
+                              className="flex-1 border-b border-white/10 bg-transparent pb-1.5 font-mono text-[12px] text-zinc-300 transition-colors placeholder:text-zinc-700 focus:border-zinc-500 focus:outline-none"
+                              autoFocus
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-4">
+                            <label className="w-24 flex-shrink-0 text-[12px] text-zinc-400">
+                              Default Model
+                            </label>
+                            <div className="relative flex-1">
+                              <select
+                                value={selectedModel}
+                                onChange={(event) => {
+                                  setCurrentProvider(provider.id);
+                                  setLLMConfig(provider.id, { model: event.target.value });
+                                }}
+                                className="w-full appearance-none border-b border-white/10 bg-transparent pb-1.5 pr-8 text-[12px] text-zinc-300 transition-colors focus:border-zinc-500 focus:outline-none"
+                              >
+                                {provider.models.map((model) => (
+                                  <option key={model} value={model}>
+                                    {model}
+                                  </option>
+                                ))}
+                              </select>
+                              <div className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-zinc-500">
+                                <svg
+                                  width="12"
+                                  height="12"
+                                  viewBox="0 0 12 12"
+                                  fill="none"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                >
+                                  <path
+                                    d="M3 4.5L6 7.5L9 4.5"
+                                    stroke="currentColor"
+                                    strokeWidth="1.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-3 pt-2">
+                          <button
+                            onClick={() => setEditingProvider(null)}
+                            className="text-[12px] text-zinc-500 transition-colors hover:text-zinc-300"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => saveProviderConfig(provider.id)}
+                            className="text-[12px] font-medium text-zinc-300 transition-colors hover:text-white"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             );
           })}
@@ -770,7 +823,33 @@ function ModelsSettings({
 
                   <div className="space-y-4">
                     <div className="flex items-center gap-4">
-                      <label className="w-20 flex-shrink-0 text-[12px] text-zinc-400">Base URL</label>
+                      <label className="w-24 flex-shrink-0 text-[12px] text-zinc-400">
+                        Provider Name
+                      </label>
+                      <input
+                        type="text"
+                        value={customProviderName}
+                        onChange={(event) => setCustomProviderName(event.target.value)}
+                        placeholder="e.g. DeepSeek"
+                        className="flex-1 border-b border-white/10 bg-transparent pb-1.5 font-mono text-[12px] text-zinc-300 transition-colors placeholder:text-zinc-700 focus:border-zinc-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <label className="w-24 flex-shrink-0 text-[12px] text-zinc-400">
+                        Model Name
+                      </label>
+                      <input
+                        type="text"
+                        value={customModelName}
+                        onChange={(event) => setCustomModelName(event.target.value)}
+                        placeholder="e.g. deepseek-chat"
+                        className="flex-1 border-b border-white/10 bg-transparent pb-1.5 font-mono text-[12px] text-zinc-300 transition-colors placeholder:text-zinc-700 focus:border-zinc-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <label className="w-24 flex-shrink-0 text-[12px] text-zinc-400">Base URL</label>
                       <input
                         type="text"
                         value={customBaseUrl}
@@ -781,7 +860,7 @@ function ModelsSettings({
                     </div>
 
                     <div className="flex items-center gap-4">
-                      <label className="w-20 flex-shrink-0 text-[12px] text-zinc-400">API Key</label>
+                      <label className="w-24 flex-shrink-0 text-[12px] text-zinc-400">API Key</label>
                       <input
                         type="password"
                         value={customProviderKey}
@@ -795,7 +874,10 @@ function ModelsSettings({
 
                   <div className="flex items-center justify-end gap-3 pt-2">
                     <button
-                      onClick={() => setIsAddingProvider(false)}
+                      onClick={() => {
+                        setIsAddingProvider(false);
+                        resetCustomProviderForm();
+                      }}
                       className="text-[12px] text-zinc-500 transition-colors hover:text-zinc-300"
                     >
                       Cancel
@@ -816,7 +898,11 @@ function ModelsSettings({
           {!isAddingProvider && (
             <div className="px-3 pt-2">
               <button
-                onClick={() => setIsAddingProvider(true)}
+                onClick={() => {
+                  setEditingProvider(null);
+                  resetCustomProviderForm();
+                  setIsAddingProvider(true);
+                }}
                 className="flex items-center gap-1.5 text-[12px] text-zinc-500 transition-colors hover:text-zinc-300"
               >
                 <Plus size={12} />
@@ -824,7 +910,6 @@ function ModelsSettings({
               </button>
             </div>
           )}
-        </div>
       </section>
     </motion.div>
   );

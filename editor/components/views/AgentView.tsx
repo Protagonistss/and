@@ -19,7 +19,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ChatPanel, ToolCallDisplay } from "@/components/agent";
+import { AgentModelSelect, ChatPanel, ToolCallDisplay } from "@/components/agent";
 import { useAgent } from "@/hooks";
 import { useConversationStore, useEditorStore, useMcpStore, useProjectStore, useUIStore } from "@/stores";
 import { useConfigStore } from "@/stores/configStore";
@@ -100,6 +100,8 @@ function AgentEmptyState({ onStart }: { onStart: (goal: string) => void }) {
             </button>
           </div>
           <div className="flex items-center gap-3">
+            <AgentModelSelect className="mr-2" />
+
             <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-medium text-zinc-500 select-none mr-1">
               <span>Press</span>
               <kbd className="px-1.5 py-0.5 rounded border border-zinc-800 bg-zinc-900 font-sans">↵</kbd>
