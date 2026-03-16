@@ -55,6 +55,7 @@ export function AppLayout() {
   const hasAuthSession = useAuthStore((state) => Boolean(state.accessToken || state.refreshToken));
   const isAgentProcessing = useAgentStore((state) => state.isProcessing);
   const resetAgentState = useAgentStore((state) => state.reset);
+  const deleteAgentRun = useAgentStore((state) => state.deleteRun);
   const addToast = useUIStore((state) => state.addToast);
   const processedDeepLinksRef = useRef<Set<string>>(new Set());
 
@@ -111,6 +112,7 @@ export function AppLayout() {
       return;
     }
 
+    deleteAgentRun(conversationId);
     deleteConversation(conversationId);
     if (conversationId === currentConversationId) {
       resetAgentState();

@@ -17,7 +17,19 @@ export type {
 } from './uiStore';
 
 export { useAgentStore } from './agentStore';
-export type { AgentStatus, ToolCallRecord, AgentState } from './agentStore';
+export type {
+  AgentStatus,
+  AgentRunPhase,
+  AgentStepStatus,
+  AgentReasoningPhase,
+  ArtifactKind,
+  ToolCallRecord,
+  ArtifactRef,
+  ReasoningEntry,
+  AgentStep,
+  AgentRun,
+  AgentState,
+} from './agentStore';
 
 export { useProjectStore } from './projectStore';
 export type { ProjectState, ProjectInfo, ProjectFile } from './projectStore';
