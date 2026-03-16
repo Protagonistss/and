@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useNavigate } from "react-router";
 import {
@@ -56,6 +56,15 @@ interface ArtifactSection {
   removed: number;
 }
 
+interface ReasoningBlock {
+  type: "heading" | "list" | "ordered-list" | "paragraph";
+  level?: 2 | 3;
+  text?: string;
+  items?: string[];
+  lines?: string[];
+  start?: number;
+}
+
 function extractTextContent(message: Message | undefined): string {
   if (!message) return "";
   if (typeof message.content === "string") return message.content;
@@ -75,6 +84,189 @@ function truncateText(value: string, maxLength: number): string {
   const normalized = value.trim();
   if (!normalized) return "";
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
+}
+
+function normalizeReasoningText(value: string): string {
+  return value.replace(/\r\n/g, "\n").replace(/\s+/g, " ").trim();
+}
+
+function renderReasoningInline(text: string, keyPrefix: string): ReactNode[] {
+  return text.split(/(`[^`]+`)/g).filter(Boolean).flatMap((segment, segmentIndex) => {
+    if (segment.startsWith("`") && segment.endsWith("`")) {
+      return (
+        <code
+          key={`${keyPrefix}-code-${segmentIndex}`}
+          className="rounded-sm border border-zinc-800 bg-zinc-900/70 px-1 py-0.5 text-zinc-200"
+        >
+          {segment.slice(1, -1)}
+        </code>
+      );
+    }
+
+    return segment
+      .split(/(\*\*[^*]+\*\*)/g)
+      .filter(Boolean)
+      .map((part, partIndex) =>
+        part.startsWith("**") && part.endsWith("**") ? (
+          <strong key={`${keyPrefix}-strong-${segmentIndex}-${partIndex}`} className="font-semibold text-zinc-200">
+            {part.slice(2, -2)}
+          </strong>
+        ) : (
+          <Fragment key={`${keyPrefix}-text-${segmentIndex}-${partIndex}`}>{part}</Fragment>
+        )
+      );
+  });
+}
+
+function parseReasoningBlocks(text: string): ReasoningBlock[] {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const blocks: ReasoningBlock[] = [];
+  let paragraphLines: string[] = [];
+  let listItems: string[] = [];
+  let orderedListItems: string[] = [];
+  let orderedListStart = 1;
+
+  const flushParagraph = () => {
+    if (paragraphLines.length === 0) return;
+    blocks.push({ type: "paragraph", lines: paragraphLines });
+    paragraphLines = [];
+  };
+
+  const flushList = () => {
+    if (listItems.length === 0) return;
+    blocks.push({ type: "list", items: listItems });
+    listItems = [];
+  };
+
+  const flushOrderedList = () => {
+    if (orderedListItems.length === 0) return;
+    blocks.push({ type: "ordered-list", items: orderedListItems, start: orderedListStart });
+    orderedListItems = [];
+    orderedListStart = 1;
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      flushOrderedList();
+      continue;
+    }
+
+    if (trimmed.startsWith("### ")) {
+      flushParagraph();
+      flushList();
+      flushOrderedList();
+      blocks.push({ type: "heading", level: 3, text: trimmed.slice(4).trim() });
+      continue;
+    }
+
+    if (trimmed.startsWith("## ")) {
+      flushParagraph();
+      flushList();
+      flushOrderedList();
+      blocks.push({ type: "heading", level: 2, text: trimmed.slice(3).trim() });
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(trimmed)) {
+      flushParagraph();
+      flushOrderedList();
+      listItems.push(trimmed.replace(/^[-*]\s+/, "").trim());
+      continue;
+    }
+
+    if (/^\d+\.\s+/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      const match = trimmed.match(/^(\d+)\.\s+(.*)$/);
+      if (match) {
+        if (orderedListItems.length === 0) {
+          orderedListStart = Number(match[1]);
+        }
+        orderedListItems.push(match[2].trim());
+        continue;
+      }
+    }
+
+    flushList();
+    flushOrderedList();
+    paragraphLines.push(trimmed);
+  }
+
+  flushParagraph();
+  flushList();
+  flushOrderedList();
+
+  return blocks;
+}
+
+function ReasoningContent({ text, isStreaming = false }: { text: string; isStreaming?: boolean }) {
+  const blocks = parseReasoningBlocks(text);
+
+  return (
+    <div className={cn("space-y-2", isStreaming ? "text-zinc-300" : "text-zinc-400")}>
+      {blocks.map((block, blockIndex) => {
+        if (block.type === "heading") {
+          return (
+            <div
+              key={`heading-${blockIndex}`}
+              className={cn(
+                "font-semibold tracking-tight",
+                block.level === 2 ? "text-sm text-zinc-200" : "text-[12px] text-zinc-300"
+              )}
+            >
+              {renderReasoningInline(block.text || "", `heading-${blockIndex}`)}
+            </div>
+          );
+        }
+
+        if (block.type === "list") {
+          return (
+            <ul key={`list-${blockIndex}`} className="space-y-1.5 pl-4">
+              {(block.items || []).map((item, itemIndex) => (
+                <li key={`list-${blockIndex}-${itemIndex}`} className="relative leading-relaxed">
+                  <span className="absolute -left-3 top-[0.55rem] h-1 w-1 rounded-full bg-zinc-600" />
+                  <span className="break-words">
+                    {renderReasoningInline(item, `list-${blockIndex}-${itemIndex}`)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          );
+        }
+
+        if (block.type === "ordered-list") {
+          return (
+            <ol
+              key={`ordered-list-${blockIndex}`}
+              start={block.start || 1}
+              className="space-y-1.5 pl-6 marker:text-zinc-500"
+            >
+              {(block.items || []).map((item, itemIndex) => (
+                <li key={`ordered-list-${blockIndex}-${itemIndex}`} className="break-words leading-relaxed pl-1">
+                  {renderReasoningInline(item, `ordered-list-${blockIndex}-${itemIndex}`)}
+                </li>
+              ))}
+            </ol>
+          );
+        }
+
+        return (
+          <div key={`paragraph-${blockIndex}`} className="space-y-1">
+            {(block.lines || []).map((line, lineIndex) => (
+              <div key={`paragraph-${blockIndex}-${lineIndex}`} className="whitespace-pre-wrap break-words leading-relaxed">
+                {renderReasoningInline(line, `paragraph-${blockIndex}-${lineIndex}`)}
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function toPreviewLines(content: string, maxLines = 18): string[] {
@@ -110,21 +302,8 @@ function buildStepSummary(step: RuntimeAgentStep): string {
   }
 }
 
-function buildReasoningFallback(run: AgentRun | null, streamContent: string): ReasoningEntry[] {
+function buildReasoningFallback(run: AgentRun | null): ReasoningEntry[] {
   if (!run) return [];
-
-  if (streamContent.trim()) {
-    const phase: ReasoningEntry["phase"] = run.phase === "planning" ? "planning" : "execution";
-    return [
-      {
-        id: "stream",
-        phase,
-        text: streamContent.trim(),
-        stepId: run.activeStepId,
-        createdAt: run.updatedAt,
-      },
-    ];
-  }
 
   const activeStep = run.activeStepId
     ? run.steps.find((step) => step.id === run.activeStepId) || null
@@ -147,6 +326,23 @@ function buildReasoningFallback(run: AgentRun | null, streamContent: string): Re
       phase: run.phase === "planning" ? "planning" : "execution",
       text: fallbackText,
       stepId: activeStep?.id || null,
+      createdAt: run.updatedAt,
+    },
+  ];
+}
+
+function buildReasoningFromLastAssistantMessage(run: AgentRun): ReasoningEntry[] {
+  const message = run.lastAssistantMessage.trim();
+  if (!message) {
+    return [];
+  }
+
+  return [
+    {
+      id: "assistant-fallback",
+      phase: run.phase === "planning" ? "planning" : "execution",
+      text: message,
+      stepId: run.activeStepId,
       createdAt: run.updatedAt,
     },
   ];
@@ -334,6 +530,7 @@ function AgentEmptyState({ onStart }: { onStart: (goal: string) => void }) {
 export function AgentView() {
   const navigate = useNavigate();
   const goalInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const reasoningScrollRef = useRef<HTMLDivElement | null>(null);
   const [goalDraft, setGoalDraft] = useState("");
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [isReasoningExpanded, setIsReasoningExpanded] = useState(true);
@@ -444,14 +641,22 @@ export function AgentView() {
     const baseEntries =
       currentRun.reasoningEntries.length > 0
         ? currentRun.reasoningEntries
-        : buildReasoningFallback(currentRun, currentStreamContent);
+        : currentRun.lastAssistantMessage.trim()
+        ? buildReasoningFromLastAssistantMessage(currentRun)
+        : buildReasoningFallback(currentRun);
 
-    if (!currentStreamContent.trim()) {
-      return baseEntries.slice(-4);
+    const nextEntries = baseEntries.slice(-4);
+    const normalizedPreview = normalizeReasoningText(currentStreamContent);
+    const normalizedLastEntry = nextEntries.length > 0
+      ? normalizeReasoningText(nextEntries[nextEntries.length - 1].text)
+      : "";
+
+    if (!normalizedPreview || normalizedPreview === normalizedLastEntry) {
+      return nextEntries;
     }
 
     return [
-      ...baseEntries,
+      ...nextEntries,
       {
         id: "stream-preview",
         phase: (currentRun.phase === "planning" ? "planning" : "execution") as ReasoningEntry["phase"],
@@ -461,6 +666,29 @@ export function AgentView() {
       },
     ].slice(-4);
   }, [currentRun, currentStreamContent]);
+
+  const shouldShowReasoningError =
+    Boolean(currentRun?.error) &&
+    (Boolean(currentRun?.reasoningEntries.length) || Boolean(currentRun?.lastAssistantMessage.trim()));
+
+  useEffect(() => {
+    if (!isReasoningExpanded) {
+      return;
+    }
+
+    const node = reasoningScrollRef.current;
+    if (!node) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      node.scrollTop = node.scrollHeight;
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [currentStreamContent, isReasoningExpanded, reasoningEntries, shouldShowReasoningError]);
 
   const artifactSections = useMemo(
     () => buildArtifactSections(currentRun, currentStreamContent),
@@ -827,7 +1055,10 @@ export function AgentView() {
                   transition={{ duration: 0.2 }}
                   className="shrink-0 overflow-hidden border-b border-zinc-800/80 bg-zinc-900/30"
                 >
-                  <div className="max-h-[150px] overflow-y-auto p-4 font-mono text-xs leading-relaxed text-zinc-400 scrollbar-thin scrollbar-thumb-zinc-800">
+                  <div
+                    ref={reasoningScrollRef}
+                    className="max-h-[150px] overflow-y-auto p-4 font-mono text-xs leading-relaxed text-zinc-400 scrollbar-thin scrollbar-thumb-zinc-800"
+                  >
                     <div className="flex gap-4">
                       <div className="mt-1 flex shrink-0 flex-col items-center">
                         <div className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
@@ -835,8 +1066,18 @@ export function AgentView() {
                       </div>
                       <div className="space-y-3 pb-2">
                         {reasoningEntries.map((entry) => (
-                          <p key={entry.id}>{entry.text}</p>
+                          <ReasoningContent
+                            key={entry.id}
+                            text={entry.text}
+                            isStreaming={entry.id === "stream-preview"}
+                          />
                         ))}
+                        {shouldShowReasoningError && (
+                          <div className="flex items-start gap-2 rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2 text-[11px] leading-relaxed text-red-300">
+                            <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                            <span>{currentRun?.error}</span>
+                          </div>
+                        )}
                         {isProcessing && currentStreamContent.trim() && (
                           <p className="mt-2 flex items-center gap-2 text-zinc-300">
                             <Loader2 size={10} className="animate-spin text-zinc-500" />

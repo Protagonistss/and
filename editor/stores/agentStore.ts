@@ -380,7 +380,7 @@ function addReasoningEntry(
   text: string,
   stepId?: string | null
 ): AgentRun {
-  const nextText = truncateText(text, 600);
+  const nextText = text.trim();
   if (!nextText) {
     return run;
   }
@@ -962,6 +962,20 @@ async function planRun(
 
   let planningText = '';
   let parsedPlan: { title: string; steps: AgentStep[] } | null = null;
+  const persistPlanningText = () => {
+    const nextText = planningText.trim();
+    if (!nextText) {
+      return;
+    }
+
+    set((state) => ({
+      runsByConversation: updateRunState(state, context.conversationId, (runState) => ({
+        ...runState,
+        lastAssistantMessage: nextText,
+        updatedAt: now(),
+      })),
+    }));
+  };
 
   for await (const chunk of streamBackendLLMChat(
     context.accessToken,
@@ -992,11 +1006,13 @@ async function planRun(
     }
 
     if (chunk.type === 'error') {
+      persistPlanningText();
       throw new Error(chunk.error || '规划阶段失败');
     }
   }
 
   if (!parsedPlan) {
+    persistPlanningText();
     throw new Error('模型没有返回结构化计划');
   }
 
@@ -1004,6 +1020,7 @@ async function planRun(
     ...run,
     steps: parsedPlan.steps,
     phase: 'paused',
+    lastAssistantMessage: planningText.trim() || run.lastAssistantMessage,
     updatedAt: now(),
   };
 
@@ -1230,15 +1247,11 @@ async function runExecutionLoop(
 
     if (accumulator.plainText.trim()) {
       set((state) => ({
-        runsByConversation: updateRunState(state, context.conversationId, (runState) => {
-          let nextRun = addReasoningEntry(runState, 'execution', accumulator.plainText, runState.activeStepId);
-          nextRun = {
-            ...nextRun,
-            lastAssistantMessage: accumulator.plainText.trim(),
-            updatedAt: now(),
-          };
-          return nextRun;
-        }),
+        runsByConversation: updateRunState(state, context.conversationId, (runState) => ({
+          ...runState,
+          lastAssistantMessage: accumulator.plainText.trim(),
+          updatedAt: now(),
+        })),
       }));
     }
 
