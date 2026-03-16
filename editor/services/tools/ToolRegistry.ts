@@ -1,6 +1,34 @@
 import type { ToolDefinition } from '../llm/types';
 import type { ITool, IToolRegistry, ToolContext, ToolResult } from './types';
 
+function getToolExecutionErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (typeof error === 'string' && error.trim()) {
+    return error;
+  }
+
+  if (error && typeof error === 'object') {
+    const maybeMessage = 'message' in error ? error.message : undefined;
+    if (typeof maybeMessage === 'string' && maybeMessage.trim()) {
+      return maybeMessage;
+    }
+
+    try {
+      const serialized = JSON.stringify(error);
+      if (serialized && serialized !== '{}') {
+        return serialized;
+      }
+    } catch {
+      // Ignore serialization failures and fall back to the generic message below.
+    }
+  }
+
+  return 'Unknown error occurred';
+}
+
 /**
  * 工具注册表
  * 管理所有可用工具，提供注册、查询和执行功能
@@ -77,7 +105,7 @@ export class ToolRegistry implements IToolRegistry {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: getToolExecutionErrorMessage(error),
       };
     }
   }

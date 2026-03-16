@@ -1,12 +1,14 @@
 use super::types::*;
+use crate::config::ConfigManager;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::{hash_map::DefaultHasher, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
+use std::path::Path;
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot, Mutex};
@@ -16,6 +18,7 @@ const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
 const MCP_CLIENT_NAME: &str = "Slate";
 const REQUEST_TIMEOUT_SECS: u64 = 30;
 const CHANNEL_BUFFER: usize = 64;
+const JSONRPC_METHOD_NOT_FOUND: i64 = -32601;
 
 #[derive(Clone)]
 pub struct McpManager {
@@ -309,7 +312,11 @@ impl McpManager {
                 "initialize",
                 Some(json!({
                     "protocolVersion": MCP_PROTOCOL_VERSION,
-                    "capabilities": {},
+                    "capabilities": {
+                        "roots": {
+                            "listChanged": false,
+                        }
+                    },
                     "clientInfo": {
                         "name": MCP_CLIENT_NAME,
                         "version": env!("CARGO_PKG_VERSION"),
@@ -541,6 +548,19 @@ impl McpManager {
             Err(_) => return,
         };
 
+        if let (Some(method), Some(request_id)) = (
+            message.get("method").and_then(|value| value.as_str()),
+            message.get("id").cloned(),
+        ) {
+            if let Err(error) = self
+                .handle_server_request(server_id, request_id, method)
+                .await
+            {
+                self.mark_session_error(server_id, error).await;
+            }
+            return;
+        }
+
         if let Some(id) = message.get("id").and_then(|value| value.as_u64()) {
             let result = if let Some(error) = message.get("error") {
                 let error_message = error
@@ -572,6 +592,46 @@ impl McpManager {
                 if let Err(error) = self.refresh_tools(server_id).await {
                     self.mark_session_error(server_id, error).await;
                 }
+            }
+        }
+    }
+
+    async fn handle_server_request(
+        &self,
+        server_id: &str,
+        request_id: Value,
+        method: &str,
+    ) -> Result<(), String> {
+        match method {
+            "roots/list" => {
+                let roots = self
+                    .current_project_root()?
+                    .map(|project_root| {
+                        vec![json!({
+                            "uri": path_to_file_uri(&project_root),
+                            "name": project_root_name(&project_root),
+                        })]
+                    })
+                    .unwrap_or_default();
+
+                self.send_server_result(
+                    server_id,
+                    request_id,
+                    json!({
+                        "roots": roots,
+                    }),
+                )
+                .await
+            }
+            _ => {
+                self.send_server_error_response(
+                    server_id,
+                    request_id,
+                    JSONRPC_METHOD_NOT_FOUND,
+                    format!("客户端暂不支持 MCP 请求: {}", method),
+                    None,
+                )
+                .await
             }
         }
     }
@@ -662,6 +722,83 @@ impl McpManager {
             .map_err(|_| format!("发送 MCP 通知失败: {}", method))?;
 
         Ok(())
+    }
+
+    async fn send_server_result(
+        &self,
+        server_id: &str,
+        request_id: Value,
+        result: Value,
+    ) -> Result<(), String> {
+        self.send_payload(
+            server_id,
+            json!({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": result,
+            }),
+        )
+        .await
+    }
+
+    async fn send_server_error_response(
+        &self,
+        server_id: &str,
+        request_id: Value,
+        code: i64,
+        message: String,
+        data: Option<Value>,
+    ) -> Result<(), String> {
+        let mut error = json!({
+            "code": code,
+            "message": message,
+        });
+
+        if let Some(data) = data {
+            error["data"] = data;
+        }
+
+        self.send_payload(
+            server_id,
+            json!({
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": error,
+            }),
+        )
+        .await
+    }
+
+    async fn send_payload(&self, server_id: &str, payload: Value) -> Result<(), String> {
+        let stdin_tx = {
+            let state = self.inner.state.lock().await;
+            let session = state
+                .sessions
+                .get(server_id)
+                .ok_or_else(|| format!("未找到 MCP server: {}", server_id))?;
+            let runtime = session
+                .runtime
+                .as_ref()
+                .ok_or_else(|| format!("MCP server 未连接: {}", server_id))?;
+            runtime.stdin_tx.clone()
+        };
+
+        stdin_tx
+            .send(payload.to_string())
+            .await
+            .map_err(|_| format!("发送 MCP 响应失败: {}", server_id))
+    }
+
+    fn current_project_root(&self) -> Result<Option<String>, String> {
+        let manager = self.inner.app.state::<StdMutex<ConfigManager>>();
+        let guard = manager
+            .lock()
+            .map_err(|error| format!("读取当前项目路径失败: {}", error))?;
+
+        Ok(guard
+            .get_current_project()
+            .map(|path| path.trim().to_string())
+            .filter(|path| !path.is_empty()))
     }
 
     async fn remove_pending(&self, server_id: &str, request_id: u64) {
@@ -831,6 +968,26 @@ fn summarize_capabilities(capabilities: &Value) -> McpCapabilitySummary {
         resources: object.and_then(|map| map.get("resources")).is_some(),
         prompts: object.and_then(|map| map.get("prompts")).is_some(),
     }
+}
+
+fn path_to_file_uri(path: &str) -> String {
+    let normalized = path.replace('\\', "/");
+    let with_leading_slash = if normalized.starts_with('/') {
+        normalized
+    } else {
+        format!("/{}", normalized)
+    };
+
+    format!("file://{}", with_leading_slash)
+}
+
+fn project_root_name(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or(path)
+        .to_string()
 }
 
 pub fn validate_mcp_server(server: &McpServerConfig) -> Result<(), String> {
