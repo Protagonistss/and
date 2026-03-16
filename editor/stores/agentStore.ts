@@ -16,6 +16,8 @@ import { useAuthStore } from './authStore';
 import { useConfigStore } from './configStore';
 import { useConversationStore } from './conversationStore';
 import { useEditorStore } from './editorStore';
+import { readTextFile } from '@/services/tauri/fs';
+import { isAbsolutePath, joinPath } from '@/utils/pathUtils';
 
 export type AgentStatus = 'idle' | 'thinking' | 'streaming' | 'tool_call' | 'error';
 export type AgentRunPhase = 'planning' | 'executing' | 'paused' | 'completed' | 'error';
@@ -39,6 +41,7 @@ export interface ArtifactRef {
   kind: ArtifactKind;
   title: string;
   preview: string;
+  contentSnapshot?: string;
   createdAt: number;
 }
 
@@ -111,6 +114,49 @@ const INTERNAL_AGENT_TOOL_NAMES = {
 } as const;
 
 const INTERNAL_AGENT_TOOL_SET = new Set<string>(Object.values(INTERNAL_AGENT_TOOL_NAMES));
+const ARTIFACT_SNAPSHOT_MAX_LENGTH = 50000;
+const ARTIFACT_SNAPSHOT_TIMEOUT_MS = 3000;
+
+function resolveArtifactSnapshotPath(path: string): string | null {
+  const normalizedPath = path.trim();
+  if (!normalizedPath) {
+    return null;
+  }
+
+  if (isAbsolutePath(normalizedPath)) {
+    return normalizedPath;
+  }
+
+  const workingDirectory = useConfigStore.getState().workingDirectory.trim();
+  if (!workingDirectory) {
+    return null;
+  }
+
+  return joinPath(workingDirectory, normalizedPath);
+}
+
+async function readArtifactSnapshot(path: string): Promise<string> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    const content = await Promise.race([
+      readTextFile(path),
+      new Promise<string>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error('Timed out while reading file snapshot.'));
+        }, ARTIFACT_SNAPSHOT_TIMEOUT_MS);
+      }),
+    ]);
+
+    return content.length > ARTIFACT_SNAPSHOT_MAX_LENGTH
+      ? content.slice(0, ARTIFACT_SNAPSHOT_MAX_LENGTH)
+      : content;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
 
 interface PersistedAgentState {
   runsByConversation: Record<string, AgentRun>;
@@ -342,6 +388,7 @@ function createArtifact(input: {
   kind: ArtifactKind;
   title?: string;
   preview?: string;
+  contentSnapshot?: string;
 }): ArtifactRef {
   const createdAt = now();
   return {
@@ -351,6 +398,7 @@ function createArtifact(input: {
     kind: input.kind,
     title: input.title || input.path,
     preview: truncateText(input.preview || ''),
+    contentSnapshot: input.contentSnapshot || '',
     createdAt,
   };
 }
@@ -448,6 +496,7 @@ function attachArtifactToRun(
     kind: ArtifactKind;
     title?: string;
     preview?: string;
+    contentSnapshot?: string;
   }
 ): AgentRun {
   const artifact = createArtifact(artifactInput);
@@ -529,7 +578,17 @@ function normalizePersistedRun(run: AgentRun): AgentRun {
   const nextRun: AgentRun = {
     ...run,
     steps,
-    artifacts: Array.isArray(run.artifacts) ? run.artifacts : [],
+    artifacts: Array.isArray(run.artifacts)
+      ? run.artifacts.map((artifact) => ({
+          ...artifact,
+          contentSnapshot:
+            artifact && typeof artifact === 'object' && 'contentSnapshot' in artifact
+              ? typeof artifact.contentSnapshot === 'string'
+                ? artifact.contentSnapshot
+                : ''
+              : '',
+        }))
+      : [],
     reasoningEntries: Array.isArray(run.reasoningEntries) ? run.reasoningEntries : [],
     activeStepId: fallbackActiveStepId,
     phase: derivePersistedRunPhase({ ...run, steps }),
@@ -1597,9 +1656,21 @@ export const useAgentStore = create<AgentState>()(
             return { success: false, error: 'Invalid artifact input' };
           }
 
+          let contentSnapshot: string | undefined;
+          if (kind === 'file') {
+            const resolvedPath = resolveArtifactSnapshotPath(path);
+            if (resolvedPath) {
+              try {
+                contentSnapshot = await readArtifactSnapshot(resolvedPath);
+              } catch {
+                contentSnapshot = undefined;
+              }
+            }
+          }
+
           set((state) => ({
             runsByConversation: updateRunState(state, conversationId, (run) =>
-              attachArtifactToRun(run, { stepId, path, kind, title, preview })
+              attachArtifactToRun(run, { stepId, path, kind, title, preview, contentSnapshot })
             ),
           }));
 

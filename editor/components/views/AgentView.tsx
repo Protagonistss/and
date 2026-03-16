@@ -24,10 +24,13 @@ import {
 import { cn } from "@/lib/utils";
 import { AgentModelSelect } from "@/components/agent";
 import { useAgent } from "@/hooks";
+import { readTextFile } from "@/services/tauri/fs";
+import { isAbsolutePath, joinPath } from "@/utils/pathUtils";
 import {
   useAuthStore,
   useConversationStore,
   useLLMCatalogStore,
+  useProjectStore,
   type AgentRun,
   type AgentStep as RuntimeAgentStep,
   type AgentStepStatus,
@@ -52,8 +55,18 @@ interface ArtifactSection {
   path: string;
   state: ArtifactSectionState;
   preview: string;
+  contentSnapshot: string;
   added: number;
   removed: number;
+  cacheKey: string;
+}
+
+interface ArtifactFileContentState {
+  status: "loading" | "loaded" | "error";
+  content: string;
+  cacheKey: string;
+  source: "stream" | "file";
+  error?: string;
 }
 
 interface ReasoningBlock {
@@ -88,6 +101,68 @@ function truncateText(value: string, maxLength: number): string {
 
 function normalizeReasoningText(value: string): string {
   return value.replace(/\r\n/g, "\n").replace(/\s+/g, " ").trim();
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim()) {
+    return error;
+  }
+
+  if (error && typeof error === "object" && "message" in error) {
+    const message = error.message;
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+  }
+
+  return "Failed to load file content.";
+}
+
+const ARTIFACT_FILE_READ_TIMEOUT_MS = 5000;
+
+async function readArtifactFileContent(path: string): Promise<string> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    return await Promise.race([
+      readTextFile(path),
+      new Promise<string>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error("Timed out while loading file content."));
+        }, ARTIFACT_FILE_READ_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
+function resolveArtifactFilePath(
+  artifactPath: string,
+  workingDirectory: string,
+  currentProjectPath: string | null
+): string | null {
+  const normalizedPath = artifactPath.trim();
+  if (!normalizedPath) {
+    return null;
+  }
+
+  if (isAbsolutePath(normalizedPath)) {
+    return normalizedPath;
+  }
+
+  const basePath = workingDirectory.trim() || currentProjectPath?.trim() || "";
+  if (!basePath) {
+    return null;
+  }
+
+  return joinPath(basePath, normalizedPath);
 }
 
 function renderReasoningInline(text: string, keyPrefix: string): ReactNode[] {
@@ -275,6 +350,11 @@ function toPreviewLines(content: string, maxLines = 18): string[] {
   return normalized.split("\n").slice(0, maxLines);
 }
 
+function toFileContentLines(content: string): string[] {
+  const normalized = content.replace(/\r\n/g, "\n");
+  return normalized.length > 0 ? normalized.split("\n") : [""];
+}
+
 function sanitizePathSegment(value: string): string {
   return (
     value
@@ -371,8 +451,10 @@ function buildArtifactSections(run: AgentRun | null, streamContent: string): Art
         state:
           streamContent.trim() && artifact.stepId === run.activeStepId ? "active" : "completed",
         preview,
+        contentSnapshot: artifact.contentSnapshot || "",
         added: Math.max(1, toPreviewLines(preview, 24).length),
         removed: 0,
+        cacheKey: `${run.id}:${artifact.path}`,
       };
     });
 
@@ -387,8 +469,10 @@ function buildArtifactSections(run: AgentRun | null, streamContent: string): Art
         path: activeFileArtifact.path,
         state: "active",
         preview: streamContent.trim(),
+        contentSnapshot: "",
         added: Math.max(1, toPreviewLines(streamContent.trim(), 24).length),
         removed: 0,
+        cacheKey: `${run.id}:${activeFileArtifact.path}`,
       });
     }
   }
@@ -531,14 +615,18 @@ export function AgentView() {
   const navigate = useNavigate();
   const goalInputRef = useRef<HTMLTextAreaElement | null>(null);
   const reasoningScrollRef = useRef<HTMLDivElement | null>(null);
+  const artifactLastVisibleContentRef = useRef<Record<string, string>>({});
   const [goalDraft, setGoalDraft] = useState("");
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
-  const [isReasoningExpanded, setIsReasoningExpanded] = useState(true);
+  const [isReasoningExpanded, setIsReasoningExpanded] = useState(false);
+  const [artifactFileContents, setArtifactFileContents] = useState<Record<string, ArtifactFileContentState>>({});
 
   const accessToken = useAuthStore((state) => state.accessToken);
   const currentProvider = useConfigStore((state) => state.currentProvider);
+  const workingDirectory = useConfigStore((state) => state.workingDirectory);
   const llmConfigs = useConfigStore((state) => state.llmConfigs);
   const syncLLMProviders = useConfigStore((state) => state.syncLLMProviders);
+  const currentProjectPath = useProjectStore((state) => state.currentProject?.path || null);
   const catalogProviders = useLLMCatalogStore((state) => state.providers);
   const catalogLoading = useLLMCatalogStore((state) => state.isLoading);
   const catalogError = useLLMCatalogStore((state) => state.error);
@@ -696,16 +784,25 @@ export function AgentView() {
   );
 
   useEffect(() => {
+    setArtifactFileContents({});
+    artifactLastVisibleContentRef.current = {};
+  }, [currentProjectPath, workingDirectory]);
+
+  useEffect(() => {
     if (artifactSections.length === 0) {
       setExpandedFile(null);
       return;
     }
 
-    if (expandedFile && artifactSections.some((section) => section.path === expandedFile)) {
+    if (!expandedFile) {
       return;
     }
 
-    setExpandedFile((artifactSections.find((section) => section.state === "active") || artifactSections[0]).path);
+    if (artifactSections.some((section) => section.path === expandedFile)) {
+      return;
+    }
+
+    setExpandedFile(null);
   }, [artifactSections, expandedFile]);
 
   const activeStep = useMemo(() => {
@@ -721,6 +818,148 @@ export function AgentView() {
     artifactSections.find((section) => section.state === "active")?.path ||
     artifactSections[0]?.path ||
     null;
+  const activeStreamingSection = useMemo(
+    () =>
+      currentStreamContent.trim() && activeArtifactPath
+        ? artifactSections.find((section) => section.path === activeArtifactPath && section.state === "active") || null
+        : null,
+    [activeArtifactPath, artifactSections, currentStreamContent]
+  );
+
+  useEffect(() => {
+    if (!currentStreamContent.trim() || !activeArtifactPath) {
+      return;
+    }
+
+    const streamCacheKey = activeStreamingSection?.cacheKey || `stream:${activeArtifactPath}`;
+    setArtifactFileContents((state) => {
+      const currentState = state[activeArtifactPath];
+      if (
+        currentState?.cacheKey === streamCacheKey &&
+        currentState.content === currentStreamContent &&
+        currentState.status === "loading"
+      ) {
+        return state;
+      }
+
+      return {
+        ...state,
+        [activeArtifactPath]: {
+          status: "loading",
+          content: currentStreamContent,
+          cacheKey: streamCacheKey,
+          source: "stream",
+        },
+      };
+    });
+  }, [activeArtifactPath, activeStreamingSection?.cacheKey, currentStreamContent]);
+
+  function ensureArtifactFileContent(section: ArtifactSection | null) {
+    if (!section) {
+      return;
+    }
+
+    const isStreamingSection = Boolean(currentStreamContent.trim()) && section.path === activeArtifactPath;
+    if (isStreamingSection) {
+      return;
+    }
+
+    const existingFileState = artifactFileContents[section.path] || null;
+    const resolvedPath = resolveArtifactFilePath(section.path, workingDirectory, currentProjectPath);
+
+    if (!resolvedPath) {
+      setArtifactFileContents((state) => ({
+        ...state,
+        [section.path]: {
+          status: "error",
+          content: "",
+          cacheKey: section.cacheKey,
+          source: "file",
+          error: "Project path is unavailable for this artifact.",
+        },
+      }));
+      return;
+    }
+
+    if (
+      existingFileState?.cacheKey === section.cacheKey &&
+      existingFileState.source === "file" &&
+      (existingFileState.status === "loading" || existingFileState.status === "loaded")
+    ) {
+      return;
+    }
+
+    setArtifactFileContents((state) => ({
+      ...state,
+      [section.path]: {
+        status: "loading",
+        content: state[section.path]?.content || "",
+        cacheKey: section.cacheKey,
+        source: "file",
+      },
+    }));
+
+    void readArtifactFileContent(resolvedPath)
+      .then((content) => {
+        setArtifactFileContents((state) => {
+          if (state[section.path]?.cacheKey !== section.cacheKey) {
+            return state;
+          }
+
+          return {
+            ...state,
+            [section.path]: {
+              status: "loaded",
+              content,
+              cacheKey: section.cacheKey,
+              source: "file",
+            },
+          };
+        });
+      })
+      .catch((error) => {
+        setArtifactFileContents((state) => {
+          if (state[section.path]?.cacheKey !== section.cacheKey) {
+            return state;
+          }
+
+          return {
+            ...state,
+            [section.path]: {
+              status: "error",
+              content: "",
+              cacheKey: section.cacheKey,
+              source: "file",
+              error: getErrorMessage(error),
+            },
+          };
+        });
+      });
+  }
+
+  const expandedArtifactSection = useMemo(
+    () => (expandedFile ? artifactSections.find((section) => section.path === expandedFile) || null : null),
+    [artifactSections, expandedFile]
+  );
+  const expandedArtifactPath = expandedArtifactSection?.path || null;
+  const expandedArtifactCacheKey = expandedArtifactSection?.cacheKey || null;
+  const isExpandedArtifactStreaming =
+    Boolean(currentStreamContent.trim()) &&
+    expandedArtifactSection?.path === activeArtifactPath;
+
+  useEffect(() => {
+    if (!expandedArtifactSection || !expandedArtifactPath || !expandedArtifactCacheKey || isExpandedArtifactStreaming) {
+      return;
+    }
+
+    ensureArtifactFileContent(expandedArtifactSection);
+  }, [
+    currentProjectPath,
+    expandedArtifactCacheKey,
+    expandedArtifactPath,
+    isExpandedArtifactStreaming,
+    workingDirectory,
+  ]);
 
   const latestReasoning = reasoningEntries[reasoningEntries.length - 1] || null;
   const completedSteps = displaySteps.filter((step) => step.status === "completed").length;
@@ -1110,12 +1349,50 @@ export function AgentView() {
                 <div className="flex flex-col pb-4">
                   {artifactSections.map((section) => {
                     const isExpanded = expandedFile === section.path;
-                    const previewLines = toPreviewLines(section.preview, section.state === "active" ? 22 : 10);
+                    const previewLines = toPreviewLines(section.preview, 3);
+                    const hasSummary = section.preview.trim().length > 0;
+                    const fileState = artifactFileContents[section.path] || null;
+                    const snapshotContent = section.contentSnapshot || "";
+                    const lastVisibleContent = artifactLastVisibleContentRef.current[section.path] || "";
+                    const isStreamingArtifact =
+                      Boolean(currentStreamContent.trim()) && section.path === activeArtifactPath;
+                    const hasStoredFileContent = Boolean(fileState?.content || snapshotContent || lastVisibleContent);
+                    const hasMatchingLoadedFileState =
+                      fileState?.cacheKey === section.cacheKey && fileState.status === "loaded";
+                    const hasMatchingErrorFileState =
+                      fileState?.cacheKey === section.cacheKey && fileState.status === "error";
+                    const isAwaitingFileContent =
+                      !isStreamingArtifact &&
+                      !hasStoredFileContent &&
+                      (!fileState ||
+                        fileState.cacheKey !== section.cacheKey ||
+                        fileState.status === "loading");
+                    const isRefreshingFileContent =
+                      !isStreamingArtifact && hasStoredFileContent && fileState?.status === "loading";
+                    const resolvedContent = isStreamingArtifact
+                      ? currentStreamContent
+                      : fileState?.content || snapshotContent || lastVisibleContent;
+                    if (resolvedContent) {
+                      artifactLastVisibleContentRef.current[section.path] = resolvedContent;
+                    }
+                    const contentLines = resolvedContent ? toFileContentLines(resolvedContent) : [];
+                    const shouldShowFallbackPreview =
+                      !resolvedContent &&
+                      hasMatchingErrorFileState &&
+                      hasSummary;
 
                     return (
                       <div key={section.id} className="flex flex-col border-b border-zinc-800/50">
                         <div
-                          onClick={() => setExpandedFile(isExpanded ? null : section.path)}
+                          onClick={() => {
+                            if (isExpanded) {
+                              setExpandedFile(null);
+                              return;
+                            }
+
+                            setExpandedFile(section.path);
+                            ensureArtifactFileContent(section);
+                          }}
                           className={cn(
                             "flex cursor-pointer select-none items-center gap-3 px-4 py-2 transition-colors",
                             section.state === "active"
@@ -1137,7 +1414,7 @@ export function AgentView() {
                           </span>
                           <div className="ml-auto flex items-center gap-2 text-[10px] font-mono">
                             <span className="text-zinc-400">+{section.added}</span>
-                            <span className="text-zinc-600">-{section.removed}</span>
+                            {section.removed > 0 && <span className="text-zinc-600">-{section.removed}</span>}
                             {section.state === "active" && (
                               <span className="ml-2 uppercase tracking-widest text-zinc-500">Generating</span>
                             )}
@@ -1153,32 +1430,95 @@ export function AgentView() {
                               transition={{ duration: 0.2 }}
                               className="overflow-hidden border-t border-zinc-800/50 bg-[#050505]"
                             >
-                              {section.state === "active" ? (
-                                <div className="flex overflow-hidden">
-                                  <div className="flex min-w-[2.75rem] select-none flex-col border-r border-zinc-800/50 bg-[#0a0a0a] px-3 py-4 text-right font-mono text-xs leading-[1.6] text-zinc-700">
-                                    {previewLines.map((_, index) => (
-                                      <span
-                                        key={`${section.id}-line-${index}`}
-                                        className={index < previewLines.length - 6 ? "" : "text-zinc-500"}
-                                      >
-                                        {index + 1}
-                                      </span>
-                                    ))}
+                              <div className="flex flex-col">
+                                {hasSummary && (
+                                  <div className="border-b border-zinc-800/50 bg-[#080808] px-4 py-3">
+                                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-600">
+                                      Summary
+                                    </div>
+                                    <div className="space-y-1 text-xs leading-relaxed text-zinc-400">
+                                      {previewLines.map((line, index) => (
+                                        <p key={`${section.id}-summary-${index}`}>{line}</p>
+                                      ))}
+                                    </div>
                                   </div>
-                                  <div className="flex-1 overflow-x-auto py-4">
-                                    <pre className="whitespace-pre px-4 font-mono text-xs leading-[1.6] text-zinc-300">
-                                      {previewLines.join("\n")}
-                                      {isProcessing && (
-                                        <span className="ml-1 inline-block h-3.5 w-1.5 animate-[pulse_1s_ease-in-out_infinite] align-middle bg-zinc-400" />
-                                      )}
-                                    </pre>
+                                )}
+
+                                {isStreamingArtifact ? (
+                                  <div
+                                    className="flex max-h-[26rem] overflow-x-auto overflow-y-auto overscroll-y-contain"
+                                    onWheelCapture={(event) => event.stopPropagation()}
+                                  >
+                                    <div className="flex min-w-[2.75rem] select-none flex-col border-r border-zinc-800/50 bg-[#0a0a0a] px-3 py-4 text-right font-mono text-xs leading-[1.6] text-zinc-700">
+                                      {contentLines.map((_, index) => (
+                                        <span key={`${section.id}-stream-line-${index}`}>{index + 1}</span>
+                                      ))}
+                                    </div>
+                                    <div className="min-w-0 flex-1 py-4">
+                                      <div className="mb-2 flex items-center gap-2 px-4 text-[11px] text-zinc-500">
+                                        <Loader2 size={12} className="animate-spin text-zinc-500" />
+                                        <span>Streaming current output...</span>
+                                      </div>
+                                      <pre className="whitespace-pre px-4 font-mono text-xs leading-[1.6] text-zinc-300">
+                                        {contentLines.join("\n")}
+                                        {isProcessing && (
+                                          <span className="ml-1 inline-block h-3.5 w-1.5 animate-[pulse_1s_ease-in-out_infinite] align-middle bg-zinc-400" />
+                                        )}
+                                      </pre>
+                                    </div>
                                   </div>
-                                </div>
-                              ) : (
-                                <div className="overflow-x-auto p-4 font-mono text-xs text-zinc-500">
-                                  <pre>{previewLines.join("\n")}</pre>
-                                </div>
+                                ) : isAwaitingFileContent ? (
+                                  <div className="flex items-center gap-2 px-4 py-6 text-xs text-zinc-500">
+                                    <Loader2 size={14} className="animate-spin text-zinc-500" />
+                                    <span>Loading current file content...</span>
+                                  </div>
+                                ) : resolvedContent ? (
+                                  <div
+                                    className="flex max-h-[26rem] overflow-x-auto overflow-y-auto overscroll-y-contain"
+                                    onWheelCapture={(event) => event.stopPropagation()}
+                                  >
+                                    <div className="flex min-w-[2.75rem] select-none flex-col border-r border-zinc-800/50 bg-[#0a0a0a] px-3 py-4 text-right font-mono text-xs leading-[1.6] text-zinc-700">
+                                      {contentLines.map((_, index) => (
+                                        <span key={`${section.id}-file-line-${index}`}>{index + 1}</span>
+                                      ))}
+                                    </div>
+                                    <div className="min-w-0 flex-1 py-4">
+                                      <div className="mb-2 flex items-center gap-2 px-4 text-[11px] text-zinc-600">
+                                        <span>Current file content</span>
+                                        {isRefreshingFileContent && (
+                                          <>
+                                            <Loader2 size={11} className="animate-spin text-zinc-600" />
+                                            <span className="text-zinc-500">Refreshing...</span>
+                                          </>
+                                        )}
+                                      </div>
+                                      <pre className="whitespace-pre px-4 font-mono text-xs leading-[1.6] text-zinc-300">
+                                        {contentLines.join("\n")}
+                                      </pre>
+                                    </div>
+                                  </div>
+                                ) : hasMatchingErrorFileState ? (
+                                  <div className="space-y-3 px-4 py-4">
+                                    <div className="flex items-start gap-2 rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2 text-[11px] leading-relaxed text-red-300">
+                                      <AlertCircle size={12} className="mt-0.5 shrink-0" />
+                                      <span>{fileState.error || "Failed to load current file content."}</span>
+                                    </div>
+                                    {shouldShowFallbackPreview && (
+                                      <div className="overflow-x-auto rounded-md border border-zinc-800/60 bg-[#080808] p-4 font-mono text-xs text-zinc-500">
+                                        <pre>{previewLines.join("\n")}</pre>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : hasMatchingLoadedFileState && !resolvedContent ? (
+                                  <div className="px-4 py-6 text-xs text-zinc-500">
+                                    File is empty.
+                                  </div>
+                                ) : (
+                                  <div className="px-4 py-6 text-xs text-zinc-500">
+                                    No file preview available.
+                                  </div>
                               )}
+                              </div>
                             </motion.div>
                           )}
                         </AnimatePresence>
