@@ -12,6 +12,7 @@ import { createArtifactSlice } from './slices/artifactSlice';
 import { createReasoningSlice } from './slices/reasoningSlice';
 import { createToolCallSlice } from './slices/toolCallSlice';
 import { normalizePersistedRuns } from './utils';
+import { agentExecutionService } from '@/services/agent';
 
 interface PersistedAgentState {
   runsByConversation: Record<string, import('./types').AgentRun>;
@@ -78,15 +79,23 @@ export const useAgentStore = create<AgentState>()(
           updateLastAssistantMessage: reasoningState.updateLastAssistantMessage,
           clearReasoningEntries: reasoningState.clearReasoningEntries,
 
-          // Placeholder actions - these will be implemented in services
-          sendMessage: async () => {
-            throw new Error('sendMessage not implemented - use AgentExecutionService');
+          // Agent execution actions - implemented by AgentExecutionService
+          sendMessage: async (content: string) => {
+            await agentExecutionService.sendMessage(content, get, set);
           },
-          resumeRun: async () => {
-            throw new Error('resumeRun not implemented - use AgentExecutionService');
+          resumeRun: async (instruction?: string) => {
+            await agentExecutionService.resumeRun(instruction, get, set);
           },
           retryStep: (stepId: string) => {
-            // Implementation will be added
+            const run = get().runsByConversation[Object.keys(get().runsByConversation)[0]];
+            if (run) {
+              set((state) => ({
+                runsByConversation: {
+                  ...state.runsByConversation,
+                  [run.conversationId]: get().setStepStatus(run, stepId, 'pending'),
+                },
+              }));
+            }
           },
           stopGeneration: () => {
             const { abortController } = get();
@@ -99,10 +108,20 @@ export const useAgentStore = create<AgentState>()(
             });
           },
           executeToolCall: async (name, input) => {
-            const toolCallState = createToolCallSlice(set, get, api);
-            return toolCallState.executeToolCall(name, input, '', (id, updater) => {
-              // Placeholder - this needs proper implementation
-            });
+            // Use toolCallSlice's executeToolCall method
+            return toolCallState.executeToolCall(
+              name,
+              input,
+              '',
+              (conversationId, updater) => {
+                set((state) => ({
+                  runsByConversation: {
+                    ...state.runsByConversation,
+                    [conversationId]: updater(state.runsByConversation[conversationId]!),
+                  },
+                }));
+              }
+            );
           },
           setStatus: (status) => set({ status }),
           clearError: () => set({ error: null }),

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { RouterProvider, createBrowserRouter } from "react-router";
-import { AppLayout } from "./components/layout/AppLayout";
+import { AppLayout } from "./features/layout/components";
 import { ToastContainer } from "./components/common";
 import { HomeView } from "./components/views/HomeView";
 import { EditorView } from "./components/views/EditorView";

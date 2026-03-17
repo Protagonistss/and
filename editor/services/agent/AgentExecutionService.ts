@@ -1,8 +1,7 @@
+// Agent Execution Service - handles agent execution logic
 import { v4 as uuidv4 } from 'uuid';
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { streamBackendLLMChat } from '@/services/backend/llm';
-import { toolRegistry } from '../services/tools';
+import { streamBackendLLMChat } from '../backend/llm';
+import { toolRegistry } from '../tools';
 import type {
   ContentBlock,
   LLMConfig,
@@ -10,101 +9,30 @@ import type {
   ToolDefinition,
   ToolResultContentBlock,
   ToolUseContentBlock,
-} from '../services/llm/types';
-import type { ToolContext, ToolResult } from '../services/tools';
-import { useAuthStore } from './authStore';
-import { useConfigStore } from './configStore';
-import { useConversationStore } from './conversationStore';
-import { useEditorStore } from './editorStore';
-import { readTextFile } from '@/services/tauri/fs';
+} from '../llm/types';
+import type { ToolContext, ToolResult } from '../tools';
+import { useAuthStore } from '@/stores/authStore';
+import { useConfigStore } from '@/stores/configStore';
+import { useConversationStore } from '@/stores/conversationStore';
+import { useEditorStore } from '@/stores/editorStore';
+import type {
+  AgentRun,
+  AgentStatus,
+  AgentRunPhase,
+  AgentStepStatus,
+  AgentReasoningPhase,
+  ArtifactKind,
+  ToolCallRecord,
+  ArtifactRef,
+  ReasoningEntry,
+  MessageContext,
+  AssistantAccumulator,
+  ParsedPlanStep,
+} from '@/features/agent/store/types';
+import { readTextFile } from '../tauri/fs';
 import { isAbsolutePath, joinPath } from '@/utils/pathUtils';
 
-export type AgentStatus = 'idle' | 'thinking' | 'streaming' | 'tool_call' | 'error';
-export type AgentRunPhase = 'planning' | 'executing' | 'paused' | 'completed' | 'error';
-export type AgentStepStatus = 'pending' | 'running' | 'completed' | 'blocked' | 'cancelled';
-export type AgentReasoningPhase = 'planning' | 'execution' | 'tool';
-export type ArtifactKind = 'plan' | 'file' | 'tool_result' | 'note';
-
-export interface ToolCallRecord {
-  id: string;
-  name: string;
-  input: Record<string, unknown>;
-  status: 'pending' | 'running' | 'success' | 'error';
-  result?: unknown;
-  error?: string;
-}
-
-export interface ArtifactRef {
-  id: string;
-  stepId: string | null;
-  path: string;
-  kind: ArtifactKind;
-  title: string;
-  preview: string;
-  contentSnapshot?: string;
-  createdAt: number;
-}
-
-export interface ReasoningEntry {
-  id: string;
-  phase: AgentReasoningPhase;
-  text: string;
-  stepId: string | null;
-  createdAt: number;
-}
-
-export interface AgentStep {
-  id: string;
-  title: string;
-  status: AgentStepStatus;
-  order: number;
-  dependsOnStepIds: string[];
-  summary: string;
-  evidence: string[];
-  artifactRefs: ArtifactRef[];
-  retryCount: number;
-  createdAt: number;
-  updatedAt: number;
-}
-
-export interface AgentRun {
-  id: string;
-  conversationId: string;
-  goal: string;
-  phase: AgentRunPhase;
-  provider: string;
-  model: string;
-  activeStepId: string | null;
-  error: string | null;
-  createdAt: number;
-  updatedAt: number;
-  steps: AgentStep[];
-  artifacts: ArtifactRef[];
-  reasoningEntries: ReasoningEntry[];
-  lastAssistantMessage: string;
-}
-
-interface MessageContext {
-  conversationId: string;
-  llmConfig: LLMConfig;
-  accessToken: string;
-  toolContext: ToolContext;
-  externalTools: ToolDefinition[];
-  systemPrompt?: string;
-}
-
-interface AssistantAccumulator {
-  plainText: string;
-  blocks: ContentBlock[];
-  toolUses: ToolUseContentBlock[];
-}
-
-interface ParsedPlanStep {
-  title: string;
-  summary: string;
-  dependsOn: string[];
-}
-
+// Internal tool names
 const INTERNAL_AGENT_TOOL_NAMES = {
   submitPlan: 'submit_plan',
   updateStepStatus: 'update_step_status',
@@ -117,70 +45,7 @@ const INTERNAL_AGENT_TOOL_SET = new Set<string>(Object.values(INTERNAL_AGENT_TOO
 const ARTIFACT_SNAPSHOT_MAX_LENGTH = 50000;
 const ARTIFACT_SNAPSHOT_TIMEOUT_MS = 3000;
 
-function resolveArtifactSnapshotPath(path: string): string | null {
-  const normalizedPath = path.trim();
-  if (!normalizedPath) {
-    return null;
-  }
-
-  if (isAbsolutePath(normalizedPath)) {
-    return normalizedPath;
-  }
-
-  const workingDirectory = useConfigStore.getState().workingDirectory.trim();
-  if (!workingDirectory) {
-    return null;
-  }
-
-  return joinPath(workingDirectory, normalizedPath);
-}
-
-async function readArtifactSnapshot(path: string): Promise<string> {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-  try {
-    const content = await Promise.race([
-      readTextFile(path),
-      new Promise<string>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          reject(new Error('Timed out while reading file snapshot.'));
-        }, ARTIFACT_SNAPSHOT_TIMEOUT_MS);
-      }),
-    ]);
-
-    return content.length > ARTIFACT_SNAPSHOT_MAX_LENGTH
-      ? content.slice(0, ARTIFACT_SNAPSHOT_MAX_LENGTH)
-      : content;
-  } finally {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-  }
-}
-
-interface PersistedAgentState {
-  runsByConversation: Record<string, AgentRun>;
-}
-
-export interface AgentState {
-  status: AgentStatus;
-  isProcessing: boolean;
-  currentStreamContent: string;
-  currentToolCalls: ToolCallRecord[];
-  error: string | null;
-  abortController: AbortController | null;
-  runsByConversation: Record<string, AgentRun>;
-  sendMessage: (content: string) => Promise<void>;
-  resumeRun: (instruction?: string) => Promise<void>;
-  retryStep: (stepId: string) => void;
-  deleteRun: (conversationId: string) => void;
-  stopGeneration: () => void;
-  executeToolCall: (name: string, input: Record<string, unknown>) => Promise<ToolResult>;
-  setStatus: (status: AgentStatus) => void;
-  clearError: () => void;
-  reset: () => void;
-}
-
+// Utility functions
 function now(): number {
   return Date.now();
 }
@@ -190,7 +55,6 @@ function truncateText(value: string, maxLength = 240): string {
   if (!normalized) {
     return '';
   }
-
   return normalized.length > maxLength
     ? `${normalized.slice(0, maxLength)}...`
     : normalized;
@@ -212,7 +76,6 @@ function buildConversationTitle(content: string): string {
   if (!normalized) {
     return '新对话';
   }
-
   const title = normalized.slice(0, 48);
   return normalized.length > 48 ? `${title}...` : title;
 }
@@ -221,7 +84,6 @@ function appendSystemPrompt(messages: Message[], systemPrompt?: string): Message
   if (!systemPrompt) {
     return messages;
   }
-
   return [
     {
       role: 'system',
@@ -314,7 +176,6 @@ function serializeToolResult(toolResult: ToolResult): string {
       ? toolResult.data
       : JSON.stringify(toolResult.data, null, 2);
   }
-
   return toolResult.error || 'Tool execution failed';
 }
 
@@ -382,6 +243,48 @@ function buildExecutionSystemPrompt(
     .join('\n\n');
 }
 
+function resolveArtifactSnapshotPath(path: string): string | null {
+  const normalizedPath = path.trim();
+  if (!normalizedPath) {
+    return null;
+  }
+
+  if (isAbsolutePath(normalizedPath)) {
+    return normalizedPath;
+  }
+
+  const workingDirectory = useConfigStore.getState().workingDirectory.trim();
+  if (!workingDirectory) {
+    return null;
+  }
+
+  return joinPath(workingDirectory, normalizedPath);
+}
+
+async function readArtifactSnapshot(path: string): Promise<string> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    const content = await Promise.race([
+      readTextFile(path),
+      new Promise<string>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error('Timed out while reading file snapshot.'));
+        }, ARTIFACT_SNAPSHOT_TIMEOUT_MS);
+      }),
+    ]);
+
+    return content.length > ARTIFACT_SNAPSHOT_MAX_LENGTH
+      ? content.slice(0, ARTIFACT_SNAPSHOT_MAX_LENGTH)
+      : content;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
+// Helper functions for run manipulation (will be imported from utils)
 function createArtifact(input: {
   stepId?: string | null;
   path: string;
@@ -452,7 +355,7 @@ function addReasoningEntry(
 function updateRunStep(
   run: AgentRun,
   stepId: string,
-  updater: (step: AgentStep) => AgentStep
+  updater: (step: import('@/features/agent/store/types').AgentStep) => import('@/features/agent/store/types').AgentStep
 ): AgentRun {
   const steps = run.steps.map((step) => (step.id === stepId ? updater(step) : step));
   return {
@@ -537,80 +440,6 @@ function deriveRunPhase(run: AgentRun): AgentRunPhase {
   return 'paused';
 }
 
-function derivePersistedRunPhase(run: AgentRun): AgentRunPhase {
-  if (run.error) {
-    return 'error';
-  }
-
-  if (run.steps.length === 0) {
-    return 'paused';
-  }
-
-  const hasBlocked = run.steps.some((step) => step.status === 'blocked');
-  const hasPending = run.steps.some((step) => step.status === 'pending');
-  const hasRunning = run.steps.some((step) => step.status === 'running');
-
-  if (hasBlocked) {
-    return 'error';
-  }
-
-  if (hasRunning || hasPending) {
-    return 'paused';
-  }
-
-  return 'completed';
-}
-
-function normalizePersistedRun(run: AgentRun): AgentRun {
-  const steps = Array.isArray(run.steps)
-    ? run.steps.map((step) => ({
-        ...step,
-        status: step.status === 'running' ? 'pending' : step.status,
-      }))
-    : [];
-
-  const fallbackActiveStepId =
-    (run.activeStepId && steps.some((step) => step.id === run.activeStepId) && run.activeStepId) ||
-    steps.find((step) => step.status === 'pending')?.id ||
-    steps[steps.length - 1]?.id ||
-    null;
-
-  const nextRun: AgentRun = {
-    ...run,
-    steps,
-    artifacts: Array.isArray(run.artifacts)
-      ? run.artifacts.map((artifact) => ({
-          ...artifact,
-          contentSnapshot:
-            artifact && typeof artifact === 'object' && 'contentSnapshot' in artifact
-              ? typeof artifact.contentSnapshot === 'string'
-                ? artifact.contentSnapshot
-                : ''
-              : '',
-        }))
-      : [],
-    reasoningEntries: Array.isArray(run.reasoningEntries) ? run.reasoningEntries : [],
-    activeStepId: fallbackActiveStepId,
-    phase: derivePersistedRunPhase({ ...run, steps }),
-  };
-
-  return nextRun;
-}
-
-function normalizePersistedRuns(
-  runsByConversation: Record<string, AgentRun> | null | undefined
-): Record<string, AgentRun> {
-  if (!runsByConversation || typeof runsByConversation !== 'object') {
-    return {};
-  }
-
-  return Object.fromEntries(
-    Object.entries(runsByConversation)
-      .filter(([, run]) => Boolean(run && typeof run === 'object'))
-      .map(([conversationId, run]) => [conversationId, normalizePersistedRun(run)])
-  );
-}
-
 function setStepStatus(
   run: AgentRun,
   stepId: string,
@@ -684,21 +513,18 @@ function ensureRunnableStep(run: AgentRun): AgentRun {
   return setStepStatus(run, nextStep.id, 'running');
 }
 
-function pauseRun(run: AgentRun): AgentRun {
+function updateRunState(
+  state: { runsByConversation: Record<string, AgentRun> },
+  conversationId: string,
+  updater: (run: AgentRun) => AgentRun
+): Record<string, AgentRun> {
+  const run = state.runsByConversation[conversationId];
+  if (!run) {
+    return state.runsByConversation;
+  }
   return {
-    ...run,
-    phase: 'paused',
-    activeStepId: run.steps.find((step) => step.status === 'running')?.id || run.activeStepId,
-    steps: run.steps.map((step) =>
-      step.status === 'running'
-        ? {
-            ...step,
-            status: 'pending',
-            updatedAt: now(),
-          }
-        : step
-    ),
-    updatedAt: now(),
+    ...state.runsByConversation,
+    [conversationId]: updater(run),
   };
 }
 
@@ -722,49 +548,7 @@ function createRun(context: MessageContext, goal: string): AgentRun {
   };
 }
 
-function parseStepsArray(value: unknown): ParsedPlanStep[] {
-  const parsed =
-    Array.isArray(value)
-      ? value
-      : typeof value === 'string'
-      ? JSON.parse(value)
-      : [];
-
-  if (!Array.isArray(parsed)) {
-    return [];
-  }
-
-  return parsed
-    .map((item) => {
-      if (!item || typeof item !== 'object') {
-        return null;
-      }
-
-      const title = typeof (item as { title?: unknown }).title === 'string'
-        ? (item as { title: string }).title.trim()
-        : '';
-      if (!title) {
-        return null;
-      }
-
-      const summary = typeof (item as { summary?: unknown }).summary === 'string'
-        ? (item as { summary: string }).summary.trim()
-        : title;
-      const dependsOnRaw = (item as { dependsOn?: unknown }).dependsOn;
-      const dependsOn = Array.isArray(dependsOnRaw)
-        ? dependsOnRaw.filter((entry): entry is string => typeof entry === 'string')
-        : [];
-
-      return {
-        title,
-        summary,
-        dependsOn,
-      };
-    })
-    .filter((item): item is ParsedPlanStep => Boolean(item));
-}
-
-function createStepsFromPlan(parsedSteps: ParsedPlanStep[]): AgentStep[] {
+function createStepsFromPlan(parsedSteps: ParsedPlanStep[]): import('@/features/agent/store/types').AgentStep[] {
   const createdAt = now();
   const steps = parsedSteps.map((step, index) => ({
     id: `step_${index + 1}`,
@@ -790,21 +574,40 @@ function createStepsFromPlan(parsedSteps: ParsedPlanStep[]): AgentStep[] {
   }));
 }
 
-function parsePlanToolInput(input: Record<string, unknown>): { title: string; steps: AgentStep[] } | null {
+function parsePlanToolResult(toolResult: string): { title: string; steps: import('@/features/agent/store/types').AgentStep[] } | null {
   try {
-    const rawSteps = input.steps_json ?? input.steps;
-    const parsedSteps = parseStepsArray(rawSteps);
-    if (parsedSteps.length === 0) {
+    const parsed = JSON.parse(toolResult) as { title?: string; steps_json?: string };
+
+    if (!parsed.steps_json || typeof parsed.steps_json !== 'string') {
       return null;
     }
 
-    const title = typeof input.title === 'string' && input.title.trim()
-      ? input.title.trim()
+    const parsedSteps = JSON.parse(parsed.steps_json) as unknown[] as ParsedPlanStep[];
+    if (!Array.isArray(parsedSteps)) {
+      return null;
+    }
+
+    const validSteps = parsedSteps.filter((step) => {
+      return (
+        step &&
+        typeof step === 'object' &&
+        typeof step.title === 'string' &&
+        typeof step.summary === 'string' &&
+        Array.isArray(step.dependsOn)
+      );
+    });
+
+    if (validSteps.length === 0) {
+      return null;
+    }
+
+    const title = typeof parsed.title === 'string' && parsed.title.trim()
+      ? parsed.title.trim()
       : 'Execution plan';
 
     return {
       title,
-      steps: createStepsFromPlan(parsedSteps),
+      steps: createStepsFromPlan(validSteps),
     };
   } catch {
     return null;
@@ -992,119 +795,25 @@ function prepareExistingContext(): MessageContext | null {
   };
 }
 
-function updateRunState(
-  state: AgentState,
-  conversationId: string,
-  updater: (run: AgentRun) => AgentRun
-): Record<string, AgentRun> {
-  const run = state.runsByConversation[conversationId];
-  if (!run) {
-    return state.runsByConversation;
+async function executeToolCall(
+  toolCall: { name: string; input: Record<string, unknown> },
+  context: MessageContext
+): Promise<ToolResult> {
+  const isInternalTool = INTERNAL_AGENT_TOOL_SET.has(toolCall.name);
+
+  if (isInternalTool) {
+    return { success: true, data: undefined };
   }
 
-  return {
-    ...state.runsByConversation,
-    [conversationId]: updater(run),
-  };
-}
-
-async function planRun(
-  context: MessageContext,
-  run: AgentRun,
-  abortController: AbortController,
-  set: (partial: Partial<AgentState> | ((state: AgentState) => Partial<AgentState>)) => void
-): Promise<AgentRun> {
-  const planningMessages = appendSystemPrompt(
-    getConversationMessages(context.conversationId),
-    buildPlanningSystemPrompt(context.systemPrompt, context)
-  );
-
-  let planningText = '';
-  let parsedPlan: { title: string; steps: AgentStep[] } | null = null;
-  const persistPlanningText = () => {
-    const nextText = planningText.trim();
-    if (!nextText) {
-      return;
-    }
-
-    set((state) => ({
-      runsByConversation: updateRunState(state, context.conversationId, (runState) => ({
-        ...runState,
-        lastAssistantMessage: nextText,
-        updatedAt: now(),
-      })),
-    }));
-  };
-
-  for await (const chunk of streamBackendLLMChat(
-    {
-      provider: context.llmConfig.provider,
-      model: context.llmConfig.model,
-      messages: planningMessages,
-      tools: [createPlanningTool()],
-      temperature: context.llmConfig.temperature,
-      max_tokens: context.llmConfig.maxTokens,
-    },
-    abortController.signal
-  )) {
-    if (abortController.signal.aborted) {
-      break;
-    }
-
-    if (chunk.type === 'content') {
-      planningText += chunk.content || '';
-      set({
-        status: 'streaming',
-        currentStreamContent: planningText,
-      });
-    }
-
-    if (chunk.type === 'tool_use' && chunk.toolUse?.name === INTERNAL_AGENT_TOOL_NAMES.submitPlan) {
-      parsedPlan = parsePlanToolInput(chunk.toolUse.input);
-    }
-
-    if (chunk.type === 'error') {
-      persistPlanningText();
-      throw new Error(chunk.error || '规划阶段失败');
-    }
-  }
-
-  if (!parsedPlan) {
-    persistPlanningText();
-    throw new Error('模型没有返回结构化计划');
-  }
-
-  let nextRun: AgentRun = {
-    ...run,
-    steps: parsedPlan.steps,
-    phase: 'paused',
-    lastAssistantMessage: planningText.trim() || run.lastAssistantMessage,
-    updatedAt: now(),
-  };
-
-  if (planningText.trim()) {
-    nextRun = addReasoningEntry(nextRun, 'planning', planningText);
-  }
-
-  nextRun = attachArtifactToRun(nextRun, {
-    path: 'agent/plan.md',
-    kind: 'plan',
-    title: parsedPlan.title,
-    preview: [
-      `# ${parsedPlan.title}`,
-      '',
-      ...parsedPlan.steps.map((step) => `${step.order}. ${step.title} - ${step.summary}`),
-    ].join('\n'),
-  });
-
-  return nextRun;
+  return toolRegistry.execute(toolCall.name, toolCall.input, context.toolContext);
 }
 
 async function executeToolUses(
   toolUses: ToolUseContentBlock[],
   conversationId: string,
-  setState: (partial: Partial<AgentState> | ((state: AgentState) => Partial<AgentState>)) => void,
-  executeToolCallFn: (name: string, input: Record<string, unknown>) => Promise<ToolResult>
+  setState: StoreSetter<import('@/features/agent/store/types').AgentState>,
+  executeToolCallFn: (name: string, input: Record<string, unknown>) => Promise<ToolResult>,
+  getState: StoreGetter<import('@/features/agent/store/types').AgentState>
 ): Promise<void> {
   const conversationStore = useConversationStore.getState();
 
@@ -1119,7 +828,7 @@ async function executeToolUses(
         status: 'running',
       };
 
-      setState((state) => ({
+      setState((state: import('@/features/agent/store/types').AgentState) => ({
         status: 'tool_call',
         currentToolCalls: [...state.currentToolCalls, pendingRecord],
       }));
@@ -1143,7 +852,7 @@ async function executeToolUses(
       continue;
     }
 
-    setState((state) => ({
+    setState((state: import('@/features/agent/store/types').AgentState) => ({
       currentToolCalls: state.currentToolCalls.map((toolCall) =>
         toolCall.id === toolUse.id
           ? {
@@ -1154,7 +863,7 @@ async function executeToolUses(
             }
           : toolCall
       ),
-      runsByConversation: updateRunState(state, conversationId, (run) => {
+      runsByConversation: updateRunState({ runsByConversation: state.runsByConversation }, conversationId, (run) => {
         const targetStepId =
           run.activeStepId ||
           run.steps.find((step) => step.status === 'running')?.id ||
@@ -1194,15 +903,154 @@ async function executeToolUses(
   }
 }
 
+async function planRun(
+  context: MessageContext,
+  run: AgentRun,
+  abortController: AbortController,
+  setState: StoreSetter<import('@/features/agent/store/types').AgentState>,
+  getState: StoreGetter<import('@/features/agent/store/types').AgentState>
+): Promise<AgentRun> {
+  const planningMessages = appendSystemPrompt(
+    getConversationMessages(context.conversationId),
+    buildPlanningSystemPrompt(context.systemPrompt, context)
+  );
+
+  const assistantMessageIndex = createAssistantMessage(context.conversationId);
+  const accumulator: AssistantAccumulator = {
+    plainText: '',
+    blocks: [],
+    toolUses: [],
+  };
+
+  for await (const chunk of streamBackendLLMChat(
+    {
+      provider: context.llmConfig.provider,
+      model: context.llmConfig.model,
+      messages: planningMessages,
+      tools: [createPlanningTool()],
+      temperature: context.llmConfig.temperature,
+      max_tokens: context.llmConfig.maxTokens,
+    },
+    abortController.signal
+  )) {
+    if (abortController.signal.aborted) {
+      break;
+    }
+
+    switch (chunk.type) {
+      case 'content':
+        appendAssistantText(
+          context.conversationId,
+          assistantMessageIndex,
+          accumulator,
+          chunk.content || ''
+        );
+        setState({
+          status: 'streaming',
+          currentStreamContent: accumulator.plainText,
+        });
+        break;
+
+      case 'tool_use':
+        if (chunk.toolUse) {
+          appendAssistantToolUse(
+            context.conversationId,
+            assistantMessageIndex,
+            accumulator,
+            {
+              type: 'tool_use',
+              id: chunk.toolUse.id,
+              name: chunk.toolUse.name,
+              input: chunk.toolUse.input,
+            }
+          );
+        }
+        break;
+
+      case 'error':
+        setState((state: import('@/features/agent/store/types').AgentState) => ({
+          status: 'error',
+          error: chunk.error || 'Unknown error',
+          isProcessing: false,
+          abortController: null,
+          runsByConversation: updateRunState(state, context.conversationId, (runState) => ({
+            ...runState,
+            error: chunk.error || 'Unknown error',
+            phase: 'error',
+            updatedAt: now(),
+          })),
+        }));
+        return getState().runsByConversation[context.conversationId];
+
+      default:
+        break;
+    }
+  }
+
+  if (abortController.signal.aborted) {
+    return getState().runsByConversation[context.conversationId];
+  }
+
+  const planToolUse = accumulator.toolUses.find((tu) => tu.name === INTERNAL_AGENT_TOOL_NAMES.submitPlan);
+  if (planToolUse) {
+    const toolResult = await executeToolCall(
+      { name: planToolUse.name, input: planToolUse.input },
+      context
+    );
+
+    const resultBlock: ToolResultContentBlock = {
+      type: 'tool_result',
+      tool_use_id: planToolUse.id,
+      content: serializeToolResult(toolResult),
+      is_error: !toolResult.success,
+    };
+
+    useConversationStore.getState().addMessage(context.conversationId, {
+      role: 'user',
+      content: [resultBlock],
+    });
+
+    if (toolResult.success && typeof toolResult.data === 'object') {
+      const planResult = toolResult.data as unknown;
+
+      if (
+        planResult &&
+        typeof planResult === 'object' &&
+        'steps' in planResult &&
+        Array.isArray(planResult.steps)
+      ) {
+        let nextRun = getState().runsByConversation[context.conversationId];
+        nextRun = {
+          ...nextRun,
+          steps: planResult.steps as import('@/features/agent/store/types').AgentStep[],
+          phase: 'paused',
+          updatedAt: now(),
+        };
+
+        setState((state: import('@/features/agent/store/types').AgentState) => ({
+          runsByConversation: {
+            ...state.runsByConversation,
+            [context.conversationId]: nextRun,
+          },
+        }));
+
+        return nextRun;
+      }
+    }
+  }
+
+  return getState().runsByConversation[context.conversationId];
+}
+
 async function runExecutionLoop(
   context: MessageContext,
   abortController: AbortController,
-  set: (partial: Partial<AgentState> | ((state: AgentState) => Partial<AgentState>)) => void,
-  get: () => AgentState
+  set: StoreSetter<import('@/features/agent/store/types').AgentState>,
+  get: StoreGetter<import('@/features/agent/store/types').AgentState>
 ): Promise<void> {
-  set((state) => ({
+  set((state: import('@/features/agent/store/types').AgentState) => ({
     status: 'thinking',
-    runsByConversation: updateRunState(state, context.conversationId, (run) => ({
+    runsByConversation: updateRunState({ runsByConversation: state.runsByConversation }, context.conversationId, (run) => ({
       ...ensureRunnableStep(run),
       error: null,
     })),
@@ -1273,12 +1121,12 @@ async function runExecutionLoop(
 
         case 'error':
           streamFailed = true;
-          set((state) => ({
+          set((state: import('@/features/agent/store/types').AgentState) => ({
             status: 'error',
             error: chunk.error || 'Unknown error',
             isProcessing: false,
             abortController: null,
-            runsByConversation: updateRunState(state, context.conversationId, (runState) => ({
+            runsByConversation: updateRunState({ runsByConversation: state.runsByConversation }, context.conversationId, (runState) => ({
               ...runState,
               error: chunk.error || 'Unknown error',
               phase: 'error',
@@ -1303,8 +1151,8 @@ async function runExecutionLoop(
     set({ currentStreamContent: '' });
 
     if (accumulator.plainText.trim()) {
-      set((state) => ({
-        runsByConversation: updateRunState(state, context.conversationId, (runState) => ({
+      set((state: import('@/features/agent/store/types').AgentState) => ({
+        runsByConversation: updateRunState({ runsByConversation: state.runsByConversation }, context.conversationId, (runState) => ({
           ...runState,
           lastAssistantMessage: accumulator.plainText.trim(),
           updatedAt: now(),
@@ -1313,8 +1161,8 @@ async function runExecutionLoop(
     }
 
     if (accumulator.toolUses.length === 0) {
-      set((state) => ({
-        runsByConversation: updateRunState(state, context.conversationId, (runState) => {
+      set((state: import('@/features/agent/store/types').AgentState) => ({
+        runsByConversation: updateRunState({ runsByConversation: state.runsByConversation }, context.conversationId, (runState) => {
           const runningStep = runState.activeStepId
             ? runState.steps.find((step) => step.id === runState.activeStepId) || null
             : runState.steps.find((step) => step.status === 'running') || null;
@@ -1339,7 +1187,8 @@ async function runExecutionLoop(
       accumulator.toolUses,
       context.conversationId,
       set,
-      get().executeToolCall
+      async (name, input) => executeToolCall({ name, input }, context),
+      get
     );
 
     const nextRun = get().runsByConversation[context.conversationId];
@@ -1351,21 +1200,25 @@ async function runExecutionLoop(
   }
 }
 
-export const useAgentStore = create<AgentState>()(
-  persist((set, get) => ({
-  status: 'idle',
-  isProcessing: false,
-  currentStreamContent: '',
-  currentToolCalls: [],
-  error: null,
-  abortController: null,
-  runsByConversation: {},
+// Type for Zustand store setter that accepts partial state
+type StoreSetter<T> = (
+  partial: Partial<T> | ((state: T) => Partial<T>)
+) => void;
 
-  sendMessage: async (content: string) => {
+// Type for Zustand store getter
+type StoreGetter<T> = () => T;
+
+// Export the agent execution service class
+export class AgentExecutionService {
+  async sendMessage(
+    content: string,
+    getState: StoreGetter<import('@/features/agent/store/types').AgentState>,
+    setState: StoreSetter<import('@/features/agent/store/types').AgentState>
+  ): Promise<void> {
     const accessToken = useAuthStore.getState().accessToken;
 
     if (!accessToken) {
-      set({
+      setState({
         status: 'error',
         error: '请先登录 backend 账号',
         isProcessing: false,
@@ -1375,7 +1228,7 @@ export const useAgentStore = create<AgentState>()(
 
     const context = prepareNewGoalContext(content);
     if (!context) {
-      set({
+      setState({
         status: 'error',
         error: '无法准备模型调用上下文',
         isProcessing: false,
@@ -1386,7 +1239,7 @@ export const useAgentStore = create<AgentState>()(
     const abortController = new AbortController();
     let run = createRun(context, content.trim());
 
-    set((state) => ({
+    setState((state: import('@/features/agent/store/types').AgentState) => ({
       status: 'thinking',
       isProcessing: true,
       currentStreamContent: '',
@@ -1400,9 +1253,9 @@ export const useAgentStore = create<AgentState>()(
     }));
 
     try {
-      run = await planRun(context, run, abortController, set);
+      run = await planRun(context, run, abortController, setState, getState);
 
-      set((state) => ({
+      setState((state: import('@/features/agent/store/types').AgentState) => ({
         status: 'thinking',
         currentStreamContent: '',
         runsByConversation: {
@@ -1415,23 +1268,23 @@ export const useAgentStore = create<AgentState>()(
         return;
       }
 
-      await runExecutionLoop(context, abortController, set, get);
+      await runExecutionLoop(context, abortController, setState, getState);
 
-      const finalRun = get().runsByConversation[context.conversationId];
-      set({
+      const finalRun = getState().runsByConversation[context.conversationId];
+      setState({
         status: finalRun?.phase === 'error' ? 'error' : 'idle',
         isProcessing: false,
         currentStreamContent: '',
         abortController: null,
       });
     } catch (error) {
-      set((state) => ({
+      setState((state: import('@/features/agent/store/types').AgentState) => ({
         status: 'error',
         error: error instanceof Error ? error.message : 'Unknown error',
         isProcessing: false,
         abortController: null,
         currentStreamContent: '',
-        runsByConversation: updateRunState(state, context.conversationId, (runState) => ({
+        runsByConversation: updateRunState({ runsByConversation: state.runsByConversation }, context.conversationId, (runState) => ({
           ...runState,
           error: error instanceof Error ? error.message : 'Unknown error',
           phase: 'error',
@@ -1439,21 +1292,25 @@ export const useAgentStore = create<AgentState>()(
         })),
       }));
     }
-  },
+  }
 
-  resumeRun: async (instruction?: string) => {
+  async resumeRun(
+    instruction: string | undefined,
+    getState: StoreGetter<import('@/features/agent/store/types').AgentState>,
+    setState: StoreSetter<import('@/features/agent/store/types').AgentState>
+  ): Promise<void> {
     const context = prepareExistingContext();
     if (!context) {
-      set({
+      setState({
         status: 'error',
         error: '无法恢复当前会话执行',
       });
       return;
     }
 
-    const run = get().runsByConversation[context.conversationId];
+    const run = getState().runsByConversation[context.conversationId];
     if (!run) {
-      set({
+      setState({
         status: 'error',
         error: '当前会话没有可恢复的 plan',
       });
@@ -1469,36 +1326,36 @@ export const useAgentStore = create<AgentState>()(
 
     const abortController = new AbortController();
 
-    set((state) => ({
+    setState((state: import('@/features/agent/store/types').AgentState) => ({
       status: 'thinking',
       isProcessing: true,
       currentStreamContent: '',
       currentToolCalls: [],
       error: null,
       abortController,
-      runsByConversation: updateRunState(state, context.conversationId, (runState) => ({
+      runsByConversation: updateRunState({ runsByConversation: state.runsByConversation }, context.conversationId, (runState) => ({
         ...ensureRunnableStep(runState),
         error: null,
       })),
     }));
 
     try {
-      await runExecutionLoop(context, abortController, set, get);
-      const finalRun = get().runsByConversation[context.conversationId];
-      set({
+      await runExecutionLoop(context, abortController, setState, getState);
+      const finalRun = getState().runsByConversation[context.conversationId];
+      setState({
         status: finalRun?.phase === 'error' ? 'error' : 'idle',
         isProcessing: false,
         currentStreamContent: '',
         abortController: null,
       });
     } catch (error) {
-      set((state) => ({
+      setState((state: import('@/features/agent/store/types').AgentState) => ({
         status: 'error',
         error: error instanceof Error ? error.message : 'Unknown error',
         isProcessing: false,
         abortController: null,
         currentStreamContent: '',
-        runsByConversation: updateRunState(state, context.conversationId, (runState) => ({
+        runsByConversation: updateRunState({ runsByConversation: state.runsByConversation }, context.conversationId, (runState) => ({
           ...runState,
           error: error instanceof Error ? error.message : 'Unknown error',
           phase: 'error',
@@ -1506,251 +1363,8 @@ export const useAgentStore = create<AgentState>()(
         })),
       }));
     }
-  },
-
-  retryStep: (stepId: string) =>
-    set((state) => {
-      const conversationId = useConversationStore.getState().currentConversationId;
-      if (!conversationId) {
-        return {};
-      }
-
-      return {
-        runsByConversation: updateRunState(state, conversationId, (run) => {
-          const targetStep = run.steps.find((step) => step.id === stepId);
-          if (!targetStep) {
-            return run;
-          }
-
-          const nextSteps = run.steps.map((step) => {
-            if (step.order < targetStep.order) {
-              return step;
-            }
-
-            if (step.id === stepId) {
-              return {
-                ...step,
-                status: 'pending' as AgentStepStatus,
-                summary: '',
-                evidence: [],
-                artifactRefs: [],
-                retryCount: step.retryCount + 1,
-                updatedAt: now(),
-              };
-            }
-
-            if (step.status === 'completed') {
-              return step;
-            }
-
-            return {
-              ...step,
-              status: 'pending' as AgentStepStatus,
-              summary: '',
-              evidence: [],
-              artifactRefs: [],
-              updatedAt: now(),
-            };
-          });
-
-          return {
-            ...run,
-            phase: 'paused',
-            error: null,
-            activeStepId: stepId,
-            steps: nextSteps,
-            updatedAt: now(),
-          };
-        }),
-      };
-    }),
-
-  deleteRun: (conversationId: string) =>
-    set((state) => {
-      if (!state.runsByConversation[conversationId]) {
-        return {};
-      }
-
-      const nextRuns = { ...state.runsByConversation };
-      delete nextRuns[conversationId];
-      return {
-        runsByConversation: nextRuns,
-      };
-    }),
-
-  stopGeneration: () => {
-    const { abortController } = get();
-    const conversationId = useConversationStore.getState().currentConversationId;
-    abortController?.abort();
-
-    set((state) => ({
-      status: 'idle',
-      isProcessing: false,
-      currentStreamContent: '',
-      abortController: null,
-      runsByConversation:
-        conversationId
-          ? updateRunState(state, conversationId, (run) => pauseRun(run))
-          : state.runsByConversation,
-    }));
-  },
-
-  executeToolCall: async (name: string, input: Record<string, unknown>) => {
-    const conversationId = useConversationStore.getState().currentConversationId;
-
-    if (conversationId && INTERNAL_AGENT_TOOL_SET.has(name)) {
-      switch (name) {
-        case INTERNAL_AGENT_TOOL_NAMES.updateStepStatus: {
-          const stepId = typeof input.step_id === 'string' ? input.step_id : '';
-          const status = typeof input.status === 'string' ? input.status as AgentStepStatus : null;
-          const summary = typeof input.summary === 'string' ? input.summary : undefined;
-
-          if (!stepId || !status) {
-            return { success: false, error: 'Invalid step status update input' };
-          }
-
-          set((state) => ({
-            runsByConversation: updateRunState(state, conversationId, (run) =>
-              setStepStatus(run, stepId, status, summary)
-            ),
-          }));
-
-          return {
-            success: true,
-            data: { step_id: stepId, status },
-            metadata: { internalAgentTool: true },
-          };
-        }
-
-        case INTERNAL_AGENT_TOOL_NAMES.appendStepSummary: {
-          const stepId = typeof input.step_id === 'string' ? input.step_id : '';
-          const summary = typeof input.summary === 'string' ? input.summary : '';
-
-          if (!stepId || !summary.trim()) {
-            return { success: false, error: 'Invalid step summary input' };
-          }
-
-          set((state) => ({
-            runsByConversation: updateRunState(state, conversationId, (run) =>
-              appendStepSummary(run, stepId, summary)
-            ),
-          }));
-
-          return {
-            success: true,
-            data: { step_id: stepId },
-            metadata: { internalAgentTool: true },
-          };
-        }
-
-        case INTERNAL_AGENT_TOOL_NAMES.attachArtifact: {
-          const kind = typeof input.kind === 'string' ? input.kind as ArtifactKind : null;
-          const path = typeof input.path === 'string' ? input.path : '';
-          const stepId = typeof input.step_id === 'string' ? input.step_id : undefined;
-          const title = typeof input.title === 'string' ? input.title : undefined;
-          const preview = typeof input.preview === 'string' ? input.preview : undefined;
-
-          if (!kind || !path) {
-            return { success: false, error: 'Invalid artifact input' };
-          }
-
-          let contentSnapshot: string | undefined;
-          if (kind === 'file') {
-            const resolvedPath = resolveArtifactSnapshotPath(path);
-            if (resolvedPath) {
-              try {
-                contentSnapshot = await readArtifactSnapshot(resolvedPath);
-              } catch {
-                contentSnapshot = undefined;
-              }
-            }
-          }
-
-          set((state) => ({
-            runsByConversation: updateRunState(state, conversationId, (run) =>
-              attachArtifactToRun(run, { stepId, path, kind, title, preview, contentSnapshot })
-            ),
-          }));
-
-          return {
-            success: true,
-            data: { path, kind },
-            metadata: { internalAgentTool: true },
-          };
-        }
-
-        case INTERNAL_AGENT_TOOL_NAMES.appendReasoning: {
-          const text = typeof input.text === 'string' ? input.text : '';
-          const phase = typeof input.phase === 'string' ? input.phase as AgentReasoningPhase : 'execution';
-          const stepId = typeof input.step_id === 'string' ? input.step_id : undefined;
-
-          if (!text.trim()) {
-            return { success: false, error: 'Invalid reasoning input' };
-          }
-
-          set((state) => ({
-            runsByConversation: updateRunState(state, conversationId, (run) =>
-              addReasoningEntry(run, phase, text, stepId)
-            ),
-          }));
-
-          return {
-            success: true,
-            data: { phase },
-            metadata: { internalAgentTool: true },
-          };
-        }
-
-        default:
-          break;
-      }
-    }
-
-    const configStore = useConfigStore.getState();
-    const editorStore = useEditorStore.getState();
-    const activeFile = editorStore.getActiveFile();
-    const context: ToolContext = {
-      workingDirectory: configStore.workingDirectory,
-      openFiles: editorStore.openFiles.map((file) => file.path),
-      activeFile: activeFile?.path,
-      editorContent: activeFile?.content,
-    };
-
-    return toolRegistry.execute(name, input, context);
-  },
-
-  setStatus: (status) => set({ status }),
-
-  clearError: () => set({ error: null }),
-
-  reset: () =>
-    set({
-      status: 'idle',
-      isProcessing: false,
-      currentStreamContent: '',
-      currentToolCalls: [],
-      error: null,
-      abortController: null,
-    }),
-}),
-{
-  name: 'protagonist-agent-runs',
-  partialize: (state): PersistedAgentState => ({
-    runsByConversation: state.runsByConversation,
-  }),
-  merge: (persistedState, currentState) => {
-    const persisted = persistedState as Partial<PersistedAgentState> | undefined;
-
-    return {
-      ...currentState,
-      status: 'idle',
-      isProcessing: false,
-      currentStreamContent: '',
-      currentToolCalls: [],
-      error: null,
-      abortController: null,
-      runsByConversation: normalizePersistedRuns(persisted?.runsByConversation),
-    };
-  },
+  }
 }
-));
+
+// Singleton instance
+export const agentExecutionService = new AgentExecutionService();

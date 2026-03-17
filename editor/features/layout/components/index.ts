@@ -1,3 +1,5 @@
 // Layout components exports
-// Note: 暂时空的，确保编译通过
-export {};
+export { OAuthHandler, useOAuthHandler } from './OAuthHandler';
+export { AppLayout } from './AppLayout';
+export { Sidebar } from './Sidebar/Sidebar';
+

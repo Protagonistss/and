@@ -1,7 +1,7 @@
 // Agent hooks exports
-// Note: 暂时禁用新的 hooks，使用原有代码
-// export { useAgent } from './useAgent';
-// export { useAgentRun } from './useAgentRun';
-// export { useToolExecution } from './useToolExecution';
-// export { useReasoning } from './useReasoning';
-// export { useArtifacts } from './useArtifacts';
+export { useAgentRun } from './useAgentRun';
+export { useAgentSession } from './useAgentSession';
+export { useArtifactContent } from './useArtifactContent';
+export type { AgentRunState, AgentRunActions } from './useAgentRun';
+export type { UseAgentSessionResult } from './useAgentSession';
+export type { ArtifactSection, ArtifactFileContentState } from './useArtifactContent';

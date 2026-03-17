@@ -1,0 +1,171 @@
+// useProjectSession Hook - 整合 projectStore + editorStore 逻辑
+import { useMemo, useCallback } from 'react';
+import { useProjectStore } from '@/stores/projectStore';
+import { useEditorStore } from '@/stores/editorStore';
+
+export interface ProjectSessionState {
+  // Project state
+  project: import('@/stores/projectStore').ProjectInfo | null;
+  projects: import('@/stores/projectStore').ProjectInfo[];
+  currentProjectPath: string | null;
+
+  // Editor state
+  openFiles: import('@/stores/editorStore').FileTab[];
+  activeFile: import('@/stores/editorStore').FileTab | null;
+  activeFileContent: string | null;
+}
+
+export interface ProjectSessionActions {
+  // Project actions
+  openProject: (path: string) => Promise<void>;
+  closeProject: () => void;
+  createProject: (name: string, path: string) => Promise<void>;
+  deleteProject: (path: string) => Promise<void>;
+
+  // Editor actions
+  openFile: (path: string) => Promise<void>;
+  closeFile: (path: string) => void;
+  setActiveFile: (path: string) => void;
+  updateFileContent: (path: string, content: string) => void;
+}
+
+/**
+ * 项目会话管理 Hook - 整合 projectStore 和 editorStore
+ */
+export function useProjectSession(): ProjectSessionState & ProjectSessionActions {
+  // Project state
+  const project = useProjectStore((state) => state.project);
+  const projects = useProjectStore((state) => state.projects);
+  const currentProjectPath = useProjectStore((state) => state.currentProjectPath);
+
+  // Project actions
+  const openProject = useProjectStore((state) => state.openProject);
+  const closeProject = useProjectStore((state) => state.closeProject);
+  const createProject = useProjectStore((state) => state.createProject);
+  const deleteProject = useProjectStore((state) => state.deleteProject);
+  const getProjectFiles = useProjectStore((state) => state.getProjectFiles);
+
+  // Editor state
+  const openFiles = useEditorStore((state) => state.openFiles);
+  const activeFile = useEditorStore((state) => state.getActiveFile());
+  const activeFileContent = activeFile?.content || null;
+
+  // Editor actions
+  const openFile = useEditorStore((state) => state.openFile);
+  const closeFile = useEditorStore((state) => state.closeFile);
+  const setActiveFile = useEditorStore((state) => state.setActiveFile);
+  const updateFileContent = useEditorStore((state) => state.updateFileContent);
+
+  const addToast = useProjectStore((state) => state.addToast || (() => {}));
+
+  // Computed values
+  const projectWithFiles = useMemo(() => {
+    if (!project) return null;
+    return {
+      ...project,
+      files: getProjectFiles(project.path),
+    };
+  }, [project, getProjectFiles]);
+
+  // Wrapped actions with error handling
+  const handleOpenProject = useCallback(
+    async (path: string) => {
+      try {
+        await openProject(path);
+      } catch (err) {
+        addToast({
+          type: 'error',
+          message: err instanceof Error ? err.message : '打开项目失败',
+        });
+      }
+    },
+    [openProject, addToast]
+  );
+
+  const handleCloseProject = useCallback(() => {
+    closeProject();
+  }, [closeProject]);
+
+  const handleCreateProject = useCallback(
+    async (name: string, path: string) => {
+      try {
+        await createProject(name, path);
+      } catch (err) {
+        addToast({
+          type: 'error',
+          message: err instanceof Error ? err.message : '创建项目失败',
+        });
+      }
+    },
+    [createProject, addToast]
+  );
+
+  const handleDeleteProject = useCallback(
+    async (path: string) => {
+      try {
+        await deleteProject(path);
+      } catch (err) {
+        addToast({
+          type: 'error',
+          message: err instanceof Error ? err.message : '删除项目失败',
+        });
+      }
+    },
+    [deleteProject, addToast]
+  );
+
+  const handleOpenFile = useCallback(
+    async (path: string) => {
+      try {
+        await openFile(path);
+      } catch (err) {
+        addToast({
+          type: 'error',
+          message: err instanceof Error ? err.message : '打开文件失败',
+        });
+      }
+    },
+    [openFile, addToast]
+  );
+
+  const handleCloseFile = useCallback(
+    (path: string) => {
+      closeFile(path);
+    },
+    [closeFile]
+  );
+
+  const handleSetActiveFile = useCallback(
+    (path: string) => {
+      setActiveFile(path);
+    },
+    [setActiveFile]
+  );
+
+  const handleUpdateFileContent = useCallback(
+    (path: string, content: string) => {
+      updateFileContent(path, content);
+    },
+    [updateFileContent]
+  );
+
+  return {
+    // State
+    project: projectWithFiles,
+    projects,
+    currentProjectPath,
+    openFiles,
+    activeFile,
+    activeFileContent,
+
+    // Actions
+    openProject: handleOpenProject,
+    closeProject: handleCloseProject,
+    createProject: handleCreateProject,
+    deleteProject: handleDeleteProject,
+    openFile: handleOpenFile,
+    closeFile: handleCloseFile,
+    setActiveFile: handleSetActiveFile,
+    updateFileContent: handleUpdateFileContent,
+  };
+}
