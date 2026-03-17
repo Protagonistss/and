@@ -1,4 +1,5 @@
 // MCPServerList - MCP 服务器列表组件
+import { useState } from "react";
 import type { McpServerStatus } from "@/services/mcp";
 import { MCPServerItem } from "./MCPServerItem";
 
@@ -19,6 +20,8 @@ export function MCPServerList({
   onRetry,
   onDelete,
 }: MCPServerListProps) {
+  const [expandedServerId, setExpandedServerId] = useState<string | null>(null);
+
   if (isLoading) {
     return (
       <div className="space-y-1">
@@ -45,6 +48,10 @@ export function MCPServerList({
           onEdit={onEdit}
           onRetry={onRetry}
           onDelete={onDelete}
+          expanded={expandedServerId === server.id}
+          onToggleExpanded={(serverId) =>
+            setExpandedServerId((current) => (current === serverId ? null : serverId))
+          }
         />
       ))}
     </div>

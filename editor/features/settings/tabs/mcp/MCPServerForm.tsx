@@ -1,7 +1,6 @@
 // MCPServerForm - MCP 服务器配置表单组件
-import { motion, AnimatePresence } from "motion/react";
-import { Terminal, Check, AlertCircle } from "lucide-react";
-import { useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { AlertCircle, Check, Terminal } from "lucide-react";
 import type { McpConfigScope } from "@/services/mcp";
 import type { McpServerDraft } from "../MCPSettings";
 
@@ -27,7 +26,6 @@ export function MCPServerForm({
   draft,
   configText,
   scopeOptions,
-  currentProject,
   parsedSuccessfully,
   onConfigTextChange,
   onDraftChange,
@@ -38,81 +36,58 @@ export function MCPServerForm({
   scopePathLabel,
   isEditing,
 }: MCPServerFormProps) {
-  const [inputMode, setInputMode] = useState<"json" | "form">("json");
-
-  // 默认 JSON 配置模板
-  const defaultConfig = `{
-  "mcpServers": {
-    "my-server": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/files"]
-    }
-  }
-}`;
-
-  // 检查是否可以保存（JSON 模式下有内容，或者表单模式下有必填字段）
-  const canSave =
-    inputMode === "json"
-      ? configText.trim().length > 0
-      : draft.id.trim().length > 0 && draft.name.trim().length > 0;
+  const canSave = configText.trim().length > 0 && parsedSuccessfully;
 
   return (
     <AnimatePresence>
-      {formOpen && (
+      {formOpen ? (
         <motion.div
           initial={{ opacity: 0, height: 0, overflow: "hidden" }}
           animate={{ opacity: 1, height: "auto", overflow: "hidden" }}
           exit={{ opacity: 0, height: 0, overflow: "hidden" }}
           transition={{ duration: 0.3, ease: "easeInOut" }}
-          className="border border-white/5 bg-black/20 rounded-xl flex flex-col mb-6"
+          className="mb-6 flex flex-col gap-2 pt-2 pb-6"
         >
-          {/* Header */}
-          <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between">
+          <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
               <Terminal size={14} className="text-zinc-500" />
-              <h3 className="text-[12px] font-medium text-zinc-300">
-                {isEditing ? "Edit Server" : "Server Configuration"}
+              <h3 className="text-[13px] font-medium text-zinc-200">
+                {isEditing ? "Edit Server" : "Add MCP Server"}
               </h3>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center bg-black/40 rounded-md p-0.5">
-                <button
-                  onClick={() => setInputMode("json")}
-                  className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
-                    inputMode === "json"
-                      ? "bg-zinc-700 text-zinc-200"
-                      : "text-zinc-500 hover:text-zinc-400"
-                  }`}
-                >
-                  JSON
-                </button>
-                <button
-                  onClick={() => setInputMode("form")}
-                  className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
-                    inputMode === "form"
-                      ? "bg-zinc-700 text-zinc-200"
-                      : "text-zinc-500 hover:text-zinc-400"
-                  }`}
-                >
-                  Form
-                </button>
-              </div>
-              <span className="text-[10px] text-zinc-500 font-mono tracking-wider">
-                {inputMode === "json" ? "JSON" : "MANUAL"}
-              </span>
-            </div>
+            <span className="rounded bg-black/60 px-2 py-1 font-mono text-[10px] text-zinc-500">
+              JSON
+            </span>
           </div>
 
-          {/* Scope Selector - 仅在编辑模式显示 */}
-          {isEditing && (
-            <div className="px-3 py-2 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
-              <span className="text-[11px] text-zinc-500">Scope</span>
+          <div className="flex items-center justify-between rounded-lg border border-white/5 bg-black/20 px-3 py-2.5">
+            <div className="flex flex-col">
+              <span className="text-[11px] text-zinc-500">Config Scope</span>
+              <span className="mt-1 font-mono text-[10px] text-zinc-600">
+                {scopePathLabel}: {scopePathHint}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 text-[11px] text-zinc-500">
+                <input
+                  type="checkbox"
+                  checked={draft.enabled}
+                  onChange={(event) =>
+                    onDraftChange({ ...draft, enabled: event.target.checked })
+                  }
+                  className="h-3.5 w-3.5 rounded border-white/10 bg-black/40"
+                />
+                Enabled
+              </label>
               <select
                 value={draft.scope}
-                onChange={(e) =>
-                  onDraftChange({ ...draft, scope: e.target.value as McpConfigScope })
+                onChange={(event) =>
+                  onDraftChange({
+                    ...draft,
+                    scope: event.target.value as McpConfigScope,
+                  })
                 }
-                className="bg-transparent border-none text-[11px] text-zinc-400 focus:outline-none focus:text-zinc-300 cursor-pointer"
+                className="cursor-pointer rounded border border-white/5 bg-black/40 px-2 py-1 text-[11px] text-zinc-400 focus:outline-none focus:text-zinc-200"
               >
                 {scopeOptions.map((option) => (
                   <option key={option.value} value={option.value} className="bg-zinc-900">
@@ -121,148 +96,76 @@ export function MCPServerForm({
                 ))}
               </select>
             </div>
-          )}
+          </div>
 
-          {/* JSON Mode */}
-          {inputMode === "json" && (
-            <div className="relative">
-              <textarea
-                value={configText}
-                onChange={(e) => onConfigTextChange(e.target.value)}
-                placeholder={defaultConfig}
-                className="w-full h-[180px] bg-transparent border-none p-3 text-[12px] font-mono text-zinc-300 focus:outline-none focus:bg-white/[0.01] transition-colors resize-y placeholder:text-zinc-700 leading-relaxed block custom-scrollbar"
-                spellCheck={false}
-              />
-              {/* 解析状态指示器 */}
-              {configText.trim() && (
-                <div className="absolute bottom-2 right-2 flex items-center gap-1.5 px-2 py-1 rounded-md bg-black/80 border border-white/5">
+          <div className="group relative rounded-lg border border-white/5 bg-black/40 transition-colors focus-within:border-white/10">
+            <textarea
+              value={configText}
+              onChange={(event) => onConfigTextChange(event.target.value)}
+              className="custom-scrollbar block h-[180px] w-full resize-y border-none bg-transparent p-4 font-mono text-[13px] leading-relaxed text-zinc-300 placeholder:text-zinc-700 focus:outline-none focus:ring-0"
+              spellCheck={false}
+            />
+            <div className="pointer-events-none absolute right-3 top-3 flex items-center gap-2">
+              {configText.trim() ? (
+                <div className="flex items-center gap-1 rounded bg-black/70 px-2 py-1 text-[10px]">
                   {parsedSuccessfully ? (
                     <>
                       <Check size={12} className="text-emerald-400" />
-                      <span className="text-[10px] text-emerald-400">Parsed successfully</span>
+                      <span className="text-emerald-400">Valid</span>
                     </>
                   ) : (
                     <>
                       <AlertCircle size={12} className="text-amber-400" />
-                      <span className="text-[10px] text-amber-400">Invalid JSON format</span>
+                      <span className="text-amber-400">Invalid</span>
                     </>
                   )}
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* Form Mode */}
-          {inputMode === "form" && (
-            <div className="p-3 space-y-3">
-              <div className="grid grid-cols-[80px_1fr] items-center gap-3">
-                <label className="text-[11px] text-zinc-500">Server ID</label>
-                <input
-                  type="text"
-                  value={draft.id}
-                  onChange={(e) => onDraftChange({ ...draft, id: e.target.value })}
-                  placeholder="my-server"
-                  className="bg-black/40 border border-white/5 rounded px-2 py-1.5 text-[12px] text-zinc-300 placeholder:text-zinc-700 focus:border-zinc-600 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-[80px_1fr] items-center gap-3">
-                <label className="text-[11px] text-zinc-500">Name</label>
-                <input
-                  type="text"
-                  value={draft.name}
-                  onChange={(e) => onDraftChange({ ...draft, name: e.target.value })}
-                  placeholder="My Server"
-                  className="bg-black/40 border border-white/5 rounded px-2 py-1.5 text-[12px] text-zinc-300 placeholder:text-zinc-700 focus:border-zinc-600 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-[80px_1fr] items-center gap-3">
-                <label className="text-[11px] text-zinc-500">Command</label>
-                <input
-                  type="text"
-                  value={draft.command}
-                  onChange={(e) => onDraftChange({ ...draft, command: e.target.value })}
-                  placeholder="npx"
-                  className="bg-black/40 border border-white/5 rounded px-2 py-1.5 text-[12px] text-zinc-300 font-mono placeholder:text-zinc-700 focus:border-zinc-600 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-[80px_1fr] items-start gap-3">
-                <label className="text-[11px] text-zinc-500 pt-1.5">Args</label>
-                <textarea
-                  value={draft.argsText}
-                  onChange={(e) => onDraftChange({ ...draft, argsText: e.target.value })}
-                  placeholder='-y&#10;@modelcontextprotocol/server-filesystem&#10;/path/to/files'
-                  rows={3}
-                  className="w-full bg-black/40 border border-white/5 rounded px-2 py-1.5 text-[12px] text-zinc-300 font-mono placeholder:text-zinc-700 focus:border-zinc-600 focus:outline-none resize-y"
-                />
-              </div>
-
-              <div className="grid grid-cols-[80px_1fr] items-center gap-3">
-                <label className="text-[11px] text-zinc-500">CWD (opt)</label>
-                <input
-                  type="text"
-                  value={draft.cwd}
-                  onChange={(e) => onDraftChange({ ...draft, cwd: e.target.value })}
-                  placeholder="/working/directory"
-                  className="bg-black/40 border border-white/5 rounded px-2 py-1.5 text-[12px] text-zinc-300 font-mono placeholder:text-zinc-700 focus:border-zinc-600 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-[80px_1fr] items-start gap-3">
-                <label className="text-[11px] text-zinc-500 pt-1.5">Env</label>
-                <textarea
-                  value={draft.envText}
-                  onChange={(e) => onDraftChange({ ...draft, envText: e.target.value })}
-                  placeholder="API_KEY=your_key&#10;ENV_VAR=value"
-                  rows={2}
-                  className="w-full bg-black/40 border border-white/5 rounded px-2 py-1.5 text-[12px] text-zinc-300 font-mono placeholder:text-zinc-700 focus:border-zinc-600 focus:outline-none resize-y"
-                />
+              ) : null}
+              <div className="rounded bg-black/60 px-2 py-1 font-mono text-[10px] text-zinc-500">
+                JSON
               </div>
             </div>
-          )}
+          </div>
 
-          {/* Footer */}
-          <div className="px-3 py-2.5 border-t border-white/5 flex items-center justify-between bg-black/40">
+          <div className="mt-1 flex items-center justify-between">
             <div className="flex flex-col">
-              <p className="text-[11px] text-zinc-500">
+              <p className="text-[12px] text-zinc-500">
                 {isEditing
-                  ? "Update the server configuration above."
-                  : inputMode === "json"
-                  ? "Paste your MCP server configuration JSON above."
-                  : "Fill in the server configuration details above."}
+                  ? "Update the MCP server JSON above."
+                  : "Paste your MCP server configuration JSON above."}
               </p>
-              <p className="text-[10px] text-zinc-600 font-mono mt-1">
-                {scopePathLabel}: {scopePathHint}
-              </p>
+              {!parsedSuccessfully && configText.trim() ? (
+                <p className="mt-1 text-[11px] text-amber-400/80">
+                  JSON 必须包含可解析的 MCP server 配置后才能保存。
+                </p>
+              ) : null}
             </div>
             <div className="flex items-center gap-2">
-              {isEditing && onDelete && (
+              {isEditing && onDelete ? (
                 <button
                   onClick={onDelete}
-                  className="px-3 py-1.5 rounded-md text-[12px] font-medium text-red-400/80 hover:text-red-400 hover:bg-red-950/20 transition-colors"
+                  className="rounded-md px-3 py-1.5 text-[12px] font-medium text-red-400/80 transition-colors hover:bg-red-950/20 hover:text-red-400"
                 >
                   Delete
                 </button>
-              )}
+              ) : null}
               <button
                 onClick={onCancel}
-                className="px-3 py-1.5 rounded-md text-[12px] font-medium text-zinc-500 hover:text-zinc-300 transition-colors"
+                className="rounded-md px-3 py-1.5 text-[12px] font-medium text-zinc-500 transition-colors hover:text-zinc-300"
               >
                 Cancel
               </button>
               <button
                 onClick={onSave}
                 disabled={!canSave}
-                className="px-3 py-1.5 rounded-md text-[12px] font-medium bg-zinc-200 text-zinc-900 hover:bg-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-md border border-white/5 bg-white/10 px-4 py-1.5 text-[12px] font-medium text-zinc-100 transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isEditing ? "Save Changes" : "Save Config"}
+                {isEditing ? "Save Changes" : "Save"}
               </button>
             </div>
           </div>
         </motion.div>
-      )}
+      ) : null}
     </AnimatePresence>
   );
 }

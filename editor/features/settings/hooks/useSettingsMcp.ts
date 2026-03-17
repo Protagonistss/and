@@ -1,5 +1,5 @@
 // useSettingsMcp - 设置页面 MCP 配置相关逻辑
-import { useState, useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMcpStore, useProjectStore, useUIStore } from "@/stores";
 import { confirmDialog } from "@/services/tauri/dialog";
 import { isTauriEnvironment } from "@/services/tauri/deepLink";
@@ -10,6 +10,15 @@ import type {
   McpToolDescriptor,
 } from "@/services/mcp";
 import type { McpServerDraft } from "../tabs/MCPSettings";
+
+const DEFAULT_JSON_TEMPLATE = `{
+  "mcpServers": {
+    "sqlite": {
+      "command": "uvx",
+      "args": ["mcp-server-sqlite", "--db-path", "~/test.db"]
+    }
+  }
+}`;
 
 export interface UseSettingsMcpResult {
   currentProject: ReturnType<typeof useProjectStore.getState>["currentProject"];
@@ -40,18 +49,13 @@ export interface UseSettingsMcpResult {
   isEditing: boolean;
 }
 
-/**
- * 解析 JSON 配置文本为 McpServerDraft
- * 支持三种格式：
- * 1. mcps.json 数组格式: { "mcpServers": [{ "id": "...", "name": "...", "transport": {...} }] }
- * 2. Slate 对象格式: { "mcpServers": { "server-id": { "command": "...", "args": [...] } } }
- * 3. 完整格式: { "id": "...", "name": "...", "transport": { "type": "stdio", ... } }
- */
-function parseSnippetToServerConfig(text: string): McpServerDraft | null {
+function parseSnippetToServerConfig(
+  text: string,
+  fallback: Pick<McpServerDraft, "scope" | "enabled">,
+): McpServerDraft | null {
   try {
     const parsed = JSON.parse(text) as unknown;
 
-    // 尝试解析 mcps.json 数组格式: { mcpServers: [{ id, name, transport }] }
     if (
       typeof parsed === "object" &&
       parsed !== null &&
@@ -77,10 +81,10 @@ function parseSnippetToServerConfig(text: string): McpServerDraft | null {
 
         if (transport?.type === "stdio" || transport?.type === "sse") {
           return {
-            scope: "global",
+            scope: fallback.scope,
             id: serverConfig.id,
             name: serverConfig.name || serverConfig.id,
-            enabled: serverConfig.enabled ?? true,
+            enabled: serverConfig.enabled ?? fallback.enabled,
             command: transport.type === "stdio" ? (transport.command || "") : "",
             argsText: transport.type === "stdio" ? (transport.args || []).join("\n") : "",
             cwd: "",
@@ -90,7 +94,6 @@ function parseSnippetToServerConfig(text: string): McpServerDraft | null {
       }
     }
 
-    // 尝试解析 Slate 对象格式: { mcpServers: { "server-id": config } }
     if (
       typeof parsed === "object" &&
       parsed !== null &&
@@ -117,10 +120,10 @@ function parseSnippetToServerConfig(text: string): McpServerDraft | null {
         };
 
         return {
-          scope: "global",
+          scope: fallback.scope,
           id: firstServerId,
           name: firstServerId,
-          enabled: true,
+          enabled: fallback.enabled,
           command: config.command || "",
           argsText: (config.args || []).join("\n"),
           cwd: config.cwd || "",
@@ -131,16 +134,15 @@ function parseSnippetToServerConfig(text: string): McpServerDraft | null {
       }
     }
 
-    // 尝试解析完整格式: { id, name, transport }
     const serverConfig = parsed as Partial<McpServerConfig>;
     if (serverConfig.id && serverConfig.name && serverConfig.transport) {
       const transport = serverConfig.transport;
       if (transport.type === "stdio") {
         return {
-          scope: "global",
+          scope: fallback.scope,
           id: serverConfig.id,
           name: serverConfig.name,
-          enabled: serverConfig.enabled ?? true,
+          enabled: serverConfig.enabled ?? fallback.enabled,
           command: transport.command || "",
           argsText: (transport.args || []).join("\n"),
           cwd: serverConfig.cwd || "",
@@ -157,9 +159,6 @@ function parseSnippetToServerConfig(text: string): McpServerDraft | null {
   }
 }
 
-/**
- * 从服务器状态创建 draft
- */
 function draftFromServer(server: McpServerStatus): McpServerDraft {
   const transport = server.config.transport;
   return {
@@ -176,9 +175,39 @@ function draftFromServer(server: McpServerStatus): McpServerDraft {
   };
 }
 
-/**
- * 获取作用域路径信息
- */
+function serializeDraftToConfigText(draft: McpServerDraft): string {
+  const args = draft.argsText
+    .split("\n")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const env = Object.fromEntries(
+    draft.envText
+      .split("\n")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const idx = line.indexOf("=");
+        if (idx === -1) return [line, ""];
+        return [line.slice(0, idx), line.slice(idx + 1)];
+      }),
+  );
+
+  return JSON.stringify(
+    {
+      mcpServers: {
+        [draft.id || "server-id"]: {
+          command: draft.command,
+          ...(args.length > 0 ? { args } : {}),
+          ...(draft.cwd.trim() ? { cwd: draft.cwd.trim() } : {}),
+          ...(Object.keys(env).length > 0 ? { env } : {}),
+        },
+      },
+    },
+    null,
+    2,
+  );
+}
+
 function getScopePathInfo(
   scope: McpConfigScope,
   currentProject: { name: string; path: string } | null,
@@ -186,7 +215,7 @@ function getScopePathInfo(
   if (scope === "project") {
     if (currentProject) {
       return {
-        hint: `${currentProject.path}/.mcp.json`,
+        hint: `${currentProject.path}/.slate/mcps.json`,
         label: `Project config (${currentProject.name})`,
       };
     }
@@ -196,7 +225,7 @@ function getScopePathInfo(
     };
   }
   return {
-    hint: "~/.config/claude-code/mcp.json",
+    hint: "~/.slate/mcps.json",
     label: "Global config",
   };
 }
@@ -231,80 +260,109 @@ export function useSettingsMcp(): UseSettingsMcpResult {
   const [parsedSuccessfully, setParsedSuccessfully] = useState(false);
 
   const mcpSupported = isTauriEnvironment();
-
-  // 计算路径信息
   const { hint: scopePathHint, label: scopePathLabel } = useMemo(
     () => getScopePathInfo(draft.scope, currentProject),
     [draft.scope, currentProject],
   );
 
   const isEditing = editingServerId !== null;
-
   const scopeOptions: readonly { value: McpConfigScope; label: string }[] = [
     { value: "global", label: "Global" },
     { value: "project", label: "Project" },
   ];
 
   const openNewForm = () => {
-    setDraft(emptyDraft(currentProject ? "project" : "global"));
-    setConfigText("");
+    const nextDraft = emptyDraft(currentProject ? "project" : "global");
+    const parsedDraft = parseSnippetToServerConfig(DEFAULT_JSON_TEMPLATE, {
+      scope: nextDraft.scope,
+      enabled: nextDraft.enabled,
+    });
+
+    setDraft(nextDraft);
+    setConfigText(DEFAULT_JSON_TEMPLATE);
     setEditingServerId(null);
-    setFormOpen(true);
-  };
-
-  const openEditForm = (server: McpServerStatus) => {
-    const newDraft = draftFromServer(server);
-    setDraft(newDraft);
-    setConfigText("");
-    setEditingServerId(server.id);
-    setFormOpen(true);
-  };
-
-  /**
-   * 解析 JSON 配置文本
-   */
-  const parseConfigText = useCallback((text: string) => {
-    const parsed = parseSnippetToServerConfig(text);
-    if (parsed) {
-      setDraft(parsed);
+    if (parsedDraft) {
+      setDraft({
+        ...parsedDraft,
+        scope: nextDraft.scope,
+        enabled: nextDraft.enabled,
+      });
       setParsedSuccessfully(true);
     } else {
       setParsedSuccessfully(false);
     }
-  }, []);
+    setFormOpen(true);
+  };
 
-  /**
-   * 删除当前编辑的服务器
-   */
+  const openEditForm = (server: McpServerStatus) => {
+    const nextDraft = draftFromServer(server);
+    setDraft(nextDraft);
+    setConfigText(serializeDraftToConfigText(nextDraft));
+    setEditingServerId(server.id);
+    setParsedSuccessfully(true);
+    setFormOpen(true);
+  };
+
+  const parseConfigText = useCallback(
+    (text: string) => {
+      if (!text.trim()) {
+        setParsedSuccessfully(false);
+        return;
+      }
+
+      const parsed = parseSnippetToServerConfig(text, {
+        scope: draft.scope,
+        enabled: draft.enabled,
+      });
+
+      if (parsed) {
+        setDraft({
+          ...parsed,
+          scope: draft.scope,
+          enabled: draft.enabled,
+        });
+        setParsedSuccessfully(true);
+      } else {
+        setParsedSuccessfully(false);
+      }
+    },
+    [draft.enabled, draft.scope],
+  );
+
   const handleDeleteDraft = useCallback(async () => {
     if (!editingServerId) return;
 
-    const server = servers.find((s) => s.id === editingServerId);
+    const server = servers.find((item) => item.id === editingServerId);
     if (!server) return;
 
     try {
       await deleteServer(server.scope, server.id);
       setFormOpen(false);
       setEditingServerId(null);
+      setParsedSuccessfully(false);
     } catch (error) {
       addToast({
         type: "error",
         message: error instanceof Error ? error.message : "Failed to delete server",
       });
     }
-  }, [editingServerId, servers, deleteServer, addToast]);
+  }, [addToast, deleteServer, editingServerId, servers]);
 
   const handleSaveServer = async () => {
-    const args = draft.argsText.split("\n").filter(Boolean);
+    const args = draft.argsText
+      .split("\n")
+      .map((value) => value.trim())
+      .filter(Boolean);
     const env = Object.fromEntries(
       draft.envText
         .split("\n")
+        .map((value) => value.trim())
         .filter(Boolean)
         .map((line) => {
           const idx = line.indexOf("=");
           if (idx === -1) return [line, ""];
           return [line.slice(0, idx), line.slice(idx + 1)];
-        })
+        }),
     );
 
     const serverConfig: McpServerConfig = {
@@ -323,6 +381,8 @@ export function useSettingsMcp(): UseSettingsMcpResult {
     try {
       await saveServer({ scope: draft.scope, server: serverConfig });
       setFormOpen(false);
+      setEditingServerId(null);
+      setParsedSuccessfully(false);
     } catch (error) {
       addToast({
         type: "error",
@@ -360,6 +420,8 @@ export function useSettingsMcp(): UseSettingsMcpResult {
     try {
       await deleteServer(server.scope, server.id);
       setFormOpen(false);
+      setEditingServerId(null);
+      setParsedSuccessfully(false);
     } catch (error) {
       addToast({
         type: "error",
