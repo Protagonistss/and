@@ -3,7 +3,7 @@ import { useRef, type KeyboardEvent } from "react";
 import { Bot, Pause, Play, Plus, RotateCcw, Settings } from "lucide-react";
 import { useNavigate } from "react-router";
 import { cn } from "@/lib/utils";
-import { AgentModelSelect } from "@/components/agent";
+import { AgentModelSelect } from "@/features/agent/components";
 
 export interface AgentControlsProps {
   goalDraft: string;

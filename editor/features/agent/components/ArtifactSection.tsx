@@ -2,7 +2,7 @@
 import { motion, AnimatePresence } from "motion/react";
 import { FileCode } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ArtifactSection } from "../hooks/useArtifactContent";
+import type { ArtifactSection, ArtifactFileContentState } from "../hooks/useArtifactContent";
 import { ArtifactContent } from "./ArtifactContent";
 import { ArtifactContentStreaming } from "./ArtifactContentStreaming";
 
@@ -17,7 +17,7 @@ interface ArtifactSectionProps {
   isRefreshingFileContent: boolean;
   hasStoredFileContent: boolean;
   shouldShowFallbackPreview: boolean;
-  fileState: any;
+  fileState: ArtifactFileContentState | null;
   onToggle: () => void;
 }
 

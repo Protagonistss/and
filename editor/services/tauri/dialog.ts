@@ -8,6 +8,13 @@ const isTauri =
   ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
 
 /**
+ * 类型守卫：检查值是否为非空字符串
+ */
+function isNonNullableString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+/**
  * 打开文件夹选择对话框
  * @returns 选择的文件夹路径，如果取消则返回 null
  */
@@ -25,7 +32,7 @@ export async function openFolderDialog(): Promise<string | null> {
       title: '选择文件夹',
     });
 
-    return selected as string | null;
+    return isNonNullableString(selected) ? selected : null;
   } catch (error) {
     console.error('Failed to open folder dialog:', error);
     return null;
@@ -52,7 +59,7 @@ export async function openFileDialog(filters?: { name: string; extensions: strin
       title: '选择文件',
     });
 
-    return selected as string | null;
+    return isNonNullableString(selected) ? selected : null;
   } catch (error) {
     console.error('Failed to open file dialog:', error);
     return null;

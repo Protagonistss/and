@@ -1,7 +1,0 @@
-.message-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-height: 100%;
-  align-content: flex-start;
-}

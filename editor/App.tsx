@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { RouterProvider, createBrowserRouter } from "react-router";
 import { AppLayout } from "./features/layout/components";
 import { ToastContainer } from "./components/common";
-import { HomeView } from "./components/views/HomeView";
-import { EditorView } from "./components/views/EditorView";
-import { AgentView } from "./components/views/AgentView";
-import { SettingsView } from "./components/views/SettingsView";
+import { HomeView } from "@/features/home/views";
+import { EditorView } from "@/features/editor/views";
+import { AgentView } from "@/features/agent/views";
+import { SettingsView } from "@/features/settings/views";
 import { useProjectStore } from "@/stores/projectStore";
 import { useAuthStore, useMcpStore } from "@/stores";
 

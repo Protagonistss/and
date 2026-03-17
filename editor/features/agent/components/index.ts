@@ -1,4 +1,5 @@
 // Agent components exports
+export { AgentModelSelect } from './AgentModelSelect';
 export { StepIcon } from './StepIcon';
 export { ReasoningContent } from './ReasoningContent';
 export { AgentEmptyState } from './AgentEmptyState';

@@ -3,7 +3,7 @@ import { StateCreator } from 'zustand';
 import type { ArtifactRef, ArtifactKind, AgentRun } from '../types';
 import { ARTIFACT_SNAPSHOT_MAX_LENGTH, ARTIFACT_SNAPSHOT_TIMEOUT_MS } from '../types';
 import { readTextFile } from '@/services/tauri/fs';
-import { isAbsolutePath, joinPath } from '@/utils/pathUtils';
+import { isAbsolutePath, joinPath } from '@/utils';
 import { useConfigStore } from '@/stores/configStore';
 import { createArtifact, replaceArtifact, attachArtifactToRun } from '../utils';
 

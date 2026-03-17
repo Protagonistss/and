@@ -4,9 +4,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { AlertCircle, ChevronDown, ExternalLink, GitBranch, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ReasoningContent } from "./ReasoningContent";
-import * as AgentViewUtils from "./utils/agentViewUtils";
+import { truncateText } from "@/utils/string";
 import type { ReasoningEntry } from "@/features/agent/store/types";
-const { truncateText } = AgentViewUtils;
 
 export interface AgentReasoningPanelProps {
   isReasoningExpanded: boolean;

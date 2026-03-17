@@ -9,7 +9,7 @@ import {
 } from "react-resizable-panels";
 import { SimpleLogo } from "@/components/shared";
 import { cn } from "@/lib/utils";
-import { TopBar } from "@/components/layout/TopBar";
+import { TopBar } from "@/features/layout/components";
 import { Sidebar } from "./Sidebar/Sidebar";
 import { OAuthHandler } from "./OAuthHandler";
 

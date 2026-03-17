@@ -9,10 +9,7 @@ import { toolRegistry } from '@/services/tools';
 import { useConfigStore } from '@/stores/configStore';
 import { useEditorStore } from '@/stores/editorStore';
 import { setStepStatus, appendStepSummary, attachArtifactToRun, addReasoningEntry } from '../utils';
-
-function now(): number {
-  return Date.now();
-}
+import { now } from '@/utils/date/now';
 
 function serializeToolResult(toolResult: ToolResult): string {
   if (toolResult.data !== undefined) {

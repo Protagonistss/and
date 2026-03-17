@@ -1,4 +1,5 @@
 // Agent hooks exports
+export { useAgent } from './useAgent';
 export { useAgentRun } from './useAgentRun';
 export { useAgentSession } from './useAgentSession';
 export { useArtifactContent } from './useArtifactContent';

@@ -1,7 +1,35 @@
-import type { ILLMAdapter, LLMConfig, LLMProvider } from './types';
+import type { ILLMAdapter, LLMConfig, LLMProvider, OpenAIConfig, AnthropicConfig, OllamaConfig } from './types';
 import { OpenAIAdapter } from './OpenAIAdapter';
 import { AnthropicAdapter } from './AnthropicAdapter';
 import { OllamaAdapter } from './OllamaAdapter';
+
+/**
+ * 类型守卫：检查值是否为有效的 LLM Provider
+ */
+function isValidLLMProvider(provider: string): provider is 'openai' | 'anthropic' | 'ollama' {
+  return ['openai', 'anthropic', 'ollama'].includes(provider);
+}
+
+/**
+ * 类型守卫：检查配置是否为 OpenAI 配置
+ */
+function isOpenAIConfig(config: LLMConfig): config is OpenAIConfig {
+  return config.provider === 'openai';
+}
+
+/**
+ * 类型守卫：检查配置是否为 Anthropic 配置
+ */
+function isAnthropicConfig(config: LLMConfig): config is AnthropicConfig {
+  return config.provider === 'anthropic';
+}
+
+/**
+ * 类型守卫：检查配置是否为 Ollama 配置
+ */
+function isOllamaConfig(config: LLMConfig): config is OllamaConfig {
+  return config.provider === 'ollama';
+}
 
 /**
  * LLM 适配器工厂
@@ -21,28 +49,36 @@ export class LLMFactory {
       return this.adapters.get(key)!;
     }
 
-    let adapter: ILLMAdapter;
-
-    switch (config.provider) {
-      case 'openai':
-        adapter = new OpenAIAdapter(config as import('./types').OpenAIConfig);
-        break;
-      case 'anthropic':
-        adapter = new AnthropicAdapter(config as import('./types').AnthropicConfig);
-        break;
-      case 'ollama':
-        adapter = new OllamaAdapter({
-          ...config,
-          provider: 'ollama',
-          baseUrl: config.baseUrl || 'http://localhost:11434',
-        } as import('./types').OllamaConfig);
-        break;
-      default:
-        throw new Error(`Unknown LLM provider: ${(config as { provider: string }).provider}`);
+    // 验证 provider 类型并使用类型守卫
+    if (!isValidLLMProvider(config.provider)) {
+      throw new Error(`Unknown LLM provider: ${config.provider}`);
     }
 
-    this.adapters.set(key, adapter);
-    return adapter;
+    // 使用类型守卫来确定正确的适配器
+    if (isOpenAIConfig(config)) {
+      const adapter = new OpenAIAdapter(config);
+      this.adapters.set(key, adapter);
+      return adapter;
+    }
+
+    if (isAnthropicConfig(config)) {
+      const adapter = new AnthropicAdapter(config);
+      this.adapters.set(key, adapter);
+      return adapter;
+    }
+
+    if (isOllamaConfig(config)) {
+      const adapter = new OllamaAdapter({
+        ...config,
+        provider: 'ollama',
+        baseUrl: config.baseUrl || 'http://localhost:11434',
+      });
+      this.adapters.set(key, adapter);
+      return adapter;
+    }
+
+    // 这行代码实际上不会执行，因为 isValidLLMProvider 已经验证了所有已知情况
+    throw new Error(`Unknown LLM provider: ${config.provider}`);
   }
 
   /**

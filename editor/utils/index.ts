@@ -1,4 +1,4 @@
 // 工具函数导出
-export * from './messageParser';
-export * from './pathUtils';
-export * from './fileIcons';
+export * from './parsers/messageParser';
+export * from './path/pathUtils';
+export * from './file/fileIcons';

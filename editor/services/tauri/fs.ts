@@ -2,7 +2,7 @@
  * Tauri 文件系统 API 封装
  */
 
-import { normalizePath } from '../../utils/pathUtils';
+import { normalizePath } from '@/utils';
 
 // 检查是否在 Tauri 环境中（兼容 v2 默认注入）
 const isTauri =

@@ -1,6 +1,7 @@
 // Agent View 工具函数
 import { readTextFile } from "@/services/tauri/fs";
-import { isAbsolutePath, joinPath } from "@/utils/pathUtils";
+import { isAbsolutePath, joinPath } from "@/utils";
+import { truncateText } from "@/utils/string";
 import type { Message } from "@/services/llm/types";
 import type { AgentRun, AgentStep as RuntimeAgentStep, ReasoningEntry } from "@/stores";
 
@@ -17,12 +18,6 @@ export function extractTextContent(message: Message | undefined): string {
     })
     .join(" ")
     .trim();
-}
-
-export function truncateText(value: string, maxLength: number): string {
-  const normalized = value.trim();
-  if (!normalized) return "";
-  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
 }
 
 export function normalizeReasoningText(value: string): string {

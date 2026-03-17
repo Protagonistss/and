@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import { Layout, FileCode, Globe, Terminal, Bot, Plus, Settings, Play } from "lucide-react";
-import { AgentModelSelect } from "@/components/agent";
+import { AgentModelSelect } from "@/features/agent/components";
 
 interface AgentEmptyStateProps {
   onStart: (goal: string) => void;

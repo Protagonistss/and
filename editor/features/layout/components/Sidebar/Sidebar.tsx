@@ -5,7 +5,7 @@ import { Panel } from "react-resizable-panels";
 import { Home, Settings, PencilLine, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAgentStore, useConversationStore, useProjectStore, useEditorStore } from "@/stores";
-import { ProjectFileTree } from "@/components/layout/ProjectFileTree";
+import { ProjectFileTree } from "@/features/layout/components";
 import { NavItem } from "./NavItem";
 import { AgentSessionsSection } from "./AgentSessionsSection";
 

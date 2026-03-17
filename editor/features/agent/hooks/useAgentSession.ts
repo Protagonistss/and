@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { useAgentStore, type AgentState } from "../store/agentStore";
 import { useConversationStore } from "@/stores/conversationStore";
 import type { AgentRun } from "../store/types";
+import type { Conversation } from "@/stores/conversationStore";
 
 export interface UseAgentSessionResult {
   // Agent 状态
@@ -18,7 +19,7 @@ export interface UseAgentSessionResult {
   deleteRun: (conversationId: string) => void;
 
   // 会话状态
-  conversations: any[];
+  conversations: Conversation[];
   currentConversationId: string | null;
 
   // 会话操作

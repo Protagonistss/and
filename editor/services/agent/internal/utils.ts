@@ -1,0 +1,133 @@
+// Agent Execution Utils - 通用工具函数
+import type { Message } from '../../llm/types';
+import { INTERNAL_AGENT_TOOL_NAMES } from './tools';
+import type { MessageContext } from '../types';
+
+/**
+ * Sanitizes a string to be used as a path segment
+ */
+export function sanitizePathSegment(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'item';
+}
+
+/**
+ * Normalizes a title for comparison
+ */
+export function normalizeTitle(title: string): string {
+  return title.trim().toLowerCase();
+}
+
+/**
+ * Builds a conversation title from content
+ */
+export function buildConversationTitle(content: string): string {
+  const normalized = content.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return '新对话';
+  }
+  const title = normalized.slice(0, 48);
+  return normalized.length > 48 ? `${title}...` : title;
+}
+
+/**
+ * Appends system prompt to messages
+ */
+export function appendSystemPrompt(messages: Message[], systemPrompt?: string): Message[] {
+  if (!systemPrompt) {
+    return messages;
+  }
+  return [
+    {
+      role: 'system',
+      content: systemPrompt,
+    },
+    ...messages,
+  ];
+}
+
+/**
+ * Builds workspace summary string for context
+ */
+export function buildWorkspaceSummary(context: MessageContext): string {
+  const openFiles = Array.isArray(context.toolContext.openFiles) && context.toolContext.openFiles.length > 0
+    ? context.toolContext.openFiles.join(', ')
+    : 'none';
+
+  return [
+    `Working directory: ${context.toolContext.workingDirectory || 'not set'}`,
+    `Active file: ${context.toolContext.activeFile || 'none'}`,
+    `Open files: ${openFiles}`,
+    `Available external tools: ${context.externalTools.length > 0 ? context.externalTools.map((tool) => tool.name).join(', ') : 'none'}`,
+  ].join('\n');
+}
+
+/**
+ * Builds the planning phase system prompt
+ */
+export function buildPlanningSystemPrompt(basePrompt: string | undefined, context: MessageContext): string {
+  return [
+    basePrompt?.trim() || '',
+    'You are in Slate planning mode for an engineering execution agent.',
+    'Do not execute external tools in this phase.',
+    `You must call "${INTERNAL_AGENT_TOOL_NAMES.submitPlan}" exactly once.`,
+    'Return 3 to 7 concrete execution steps.',
+    'Each step must be observable and actionable inside the current workspace.',
+    'Prefer discovery before edits, then implementation, then validation.',
+    'Set "steps_json" to a JSON array string. Each item must be an object with:',
+    '- "title": short step title',
+    '- "summary": short expected outcome',
+    '- "dependsOn": optional array of prior step titles',
+    'Workspace context:',
+    buildWorkspaceSummary(context),
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+/**
+ * Builds the execution phase system prompt
+ */
+export function buildExecutionSystemPrompt(
+  basePrompt: string | undefined,
+  context: MessageContext,
+  run: { goal: string; steps: Array<{ id: string; title: string; status: string }> }
+): string {
+  const planLines = run.steps.map((step) => {
+    return `- ${step.id}: ${step.title} [${step.status}]`;
+  });
+
+  return [
+    basePrompt?.trim() || '',
+    'You are executing an approved Slate engineering plan.',
+    `Goal: ${run.goal}`,
+    'Execution rules:',
+    `1. Before work starts on a step, call "${INTERNAL_AGENT_TOOL_NAMES.updateStepStatus}" with status="running".`,
+    `2. Use "${INTERNAL_AGENT_TOOL_NAMES.appendReasoning}" for concise execution notes.`,
+    `3. Use "${INTERNAL_AGENT_TOOL_NAMES.appendStepSummary}" whenever you have a meaningful result for a step.`,
+    `4. Use "${INTERNAL_AGENT_TOOL_NAMES.attachArtifact}" for files, plans, or tool outputs worth showing in Live Artifacts.`,
+    `5. When a step completes, call "${INTERNAL_AGENT_TOOL_NAMES.updateStepStatus}" with status="completed".`,
+    `6. If blocked, call "${INTERNAL_AGENT_TOOL_NAMES.updateStepStatus}" with status="blocked" and include a short summary.`,
+    '7. Keep only one step running at a time.',
+    'Current plan:',
+    ...planLines,
+    'Workspace context:',
+    buildWorkspaceSummary(context),
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+/**
+ * Serializes tool result to string
+ */
+export function serializeToolResult(toolResult: { success: boolean; data?: unknown; error?: string }): string {
+  if (toolResult.data !== undefined) {
+    return typeof toolResult.data === 'string'
+      ? toolResult.data
+      : JSON.stringify(toolResult.data, null, 2);
+  }
+  return toolResult.error || 'Tool execution failed';
+}

@@ -1,6 +1,6 @@
 import * as dialog from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
-import { normalizePath } from '../utils/pathUtils';
+import { normalizePath } from '@/utils';
 
 // Rust 后端返回的目录条目类型
 interface WorkspaceDirEntry {
