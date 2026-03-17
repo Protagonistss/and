@@ -5,3 +5,5 @@ export { MCPToolsList } from './MCPToolsList';
 export { MCPServerList } from './MCPServerList';
 export { MCPServerItem } from './MCPServerItem';
 export { MCPAddButton } from './MCPAddButton';
+export { MCPServerForm } from './MCPServerForm';
+export { MCPServerSearch } from './MCPServerSearch';

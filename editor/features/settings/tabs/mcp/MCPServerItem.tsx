@@ -1,4 +1,5 @@
 // MCPServerItem - MCP 服务器项组件
+import { Terminal, Plug } from "lucide-react";
 import type { McpServerStatus } from "@/services/mcp";
 
 interface MCPServerItemProps {
@@ -10,44 +11,80 @@ interface MCPServerItemProps {
 }
 
 export function MCPServerItem({ server, onToggle, onEdit, onRetry, onDelete }: MCPServerItemProps) {
+  const getServerIcon = () => {
+    if (server.transportType === "sse") {
+      return Plug;
+    }
+    return Terminal;
+  };
+
+  const Icon = getServerIcon();
+
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className={`h-2 w-2 rounded-full ${statusDot(server.status)}`} />
-          <div>
-            <div className="text-[13px] font-medium text-zinc-200">{server.name}</div>
-            <div className="text-[10px] text-zinc-600">{describeMcpStatus(server.status)}</div>
+    <div className="group flex items-center justify-between p-3 -mx-3 rounded-lg hover:bg-white/[0.03] transition-colors relative">
+      <div className="flex items-center gap-3 min-w-0">
+        <div
+          className={`w-8 h-8 rounded-md border border-white/5 flex items-center justify-center flex-shrink-0 ${
+            server.enabled ? "bg-zinc-900" : "bg-zinc-900/50"
+          } ${!server.enabled ? "opacity-70" : ""}`}
+        >
+          <Icon size={14} className={server.enabled ? "text-zinc-500" : "text-zinc-600"} />
+        </div>
+
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-2">
+            <span
+              className={`text-[13px] font-medium truncate ${server.enabled ? "text-zinc-300" : "text-zinc-500"}`}
+            >
+              {server.name}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <span className={`w-1.5 h-1.5 rounded-full ${statusDot(server.status)}`}></span>
+              <span className={`text-[11px] ${server.enabled ? "text-zinc-500" : "text-zinc-600"}`}>
+                {describeMcpStatus(server.status)}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-zinc-600">
+            <span className="font-mono truncate max-w-[200px]">
+              {server.transportSummary}
+            </span>
+            <span>·</span>
+            <span>{server.toolCount} Tools</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+      </div>
+
+      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity absolute right-4 bg-[#050505] shadow-[0_0_12px_8px_#050505] pl-2">
+        {server.status === "error" ? (
+          <button
+            onClick={() => void onRetry(server)}
+            className="text-[12px] text-zinc-200 bg-white/10 hover:bg-white/15 px-3 py-1 rounded transition-colors border border-white/5"
+          >
+            Retry
+          </button>
+        ) : server.enabled ? (
           <button
             onClick={() => void onToggle(server)}
-            className="text-[11px] text-zinc-500 hover:text-zinc-300"
+            className="text-[12px] text-zinc-500 hover:text-zinc-300 px-2 py-1 transition-colors"
           >
-            {server.enabled ? "Disable" : "Enable"}
+            Disable
           </button>
+        ) : (
           <button
-            onClick={() => onEdit(server)}
-            className="text-[11px] text-zinc-500 hover:text-zinc-300"
+            onClick={() => void onToggle(server)}
+            className="text-[12px] text-zinc-200 bg-white/10 hover:bg-white/15 px-3 py-1 rounded transition-colors border border-white/5"
           >
-            Edit
+            Enable
           </button>
-          {server.status === "error" && (
-            <button
-              onClick={() => void onRetry(server)}
-              className="text-[11px] text-zinc-500 hover:text-zinc-300"
-            >
-              Retry
-            </button>
-          )}
-          <button
-            onClick={() => void onDelete(server)}
-            className="text-[11px] text-zinc-500 hover:text-red-400"
-          >
-            Delete
-          </button>
-        </div>
+        )}
+        <button
+          onClick={() => onEdit(server)}
+          className="text-[12px] text-zinc-500 hover:text-zinc-300 px-2 py-1 transition-colors"
+        >
+          Config
+        </button>
       </div>
     </div>
   );
@@ -56,15 +93,17 @@ export function MCPServerItem({ server, onToggle, onEdit, onRetry, onDelete }: M
 function statusDot(status: McpServerStatus["status"]): string {
   switch (status) {
     case "connected":
-      return "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.45)]";
+      return "bg-emerald-500/80";
     case "connecting":
-      return "bg-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.35)]";
+      return "bg-sky-400/80";
     case "approvalRequired":
-      return "bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.35)]";
+      return "bg-amber-400/80";
     case "error":
-      return "bg-red-400";
+      return "bg-red-400/80";
+    case "disabled":
+      return "bg-zinc-700";
     default:
-      return "bg-zinc-600";
+      return "bg-zinc-700";
   }
 }
 

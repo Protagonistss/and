@@ -3,16 +3,25 @@ import { Plus } from "lucide-react";
 
 interface MCPAddButtonProps {
   onClick: () => void;
+  isAdding?: boolean;
 }
 
-export function MCPAddButton({ onClick }: MCPAddButtonProps) {
+export function MCPAddButton({ onClick, isAdding = false }: MCPAddButtonProps) {
   return (
     <button
       onClick={onClick}
-      className="flex items-center justify-center gap-2 w-full rounded-lg border border-dashed border-zinc-700 py-3 text-[12px] text-zinc-500 transition-colors hover:border-zinc-600 hover:text-zinc-300"
+      className={`flex items-center gap-2 border px-3.5 py-2 rounded-lg text-[13px] font-medium transition-all duration-200 shadow-sm group active:scale-95 ${
+        isAdding
+          ? "bg-white/10 border-white/20 text-white"
+          : "bg-white/5 hover:bg-white/10 text-zinc-200 border-white/10"
+      }`}
     >
-      <Plus size={14} />
-      Add MCP Server
+      {isAdding ? (
+        <Plus size={14} className="text-zinc-400 rotate-45" />
+      ) : (
+        <Plus size={14} className="text-zinc-400 group-hover:text-zinc-200 transition-colors" />
+      )}
+      <span>{isAdding ? "Cancel" : "Add Server"}</span>
     </button>
   );
 }

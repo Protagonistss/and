@@ -26,7 +26,7 @@ export function AIModelsSettings() {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
       transition={{ duration: 0.25 }}
-      className="max-w-[600px] space-y-8"
+      className="space-y-10 pb-24"
     >
       <div>
         <h2 className="mb-1 text-[20px] font-medium text-zinc-100">AI Providers</h2>

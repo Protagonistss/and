@@ -64,12 +64,21 @@ export function SettingsView() {
             setDraft={mcp.setDraft}
             configText={mcp.configText}
             setConfigText={mcp.setConfigText}
+            searchQuery={mcp.searchQuery}
+            setSearchQuery={mcp.setSearchQuery}
+            parsedSuccessfully={mcp.parsedSuccessfully}
             openNewForm={mcp.openNewForm}
             openEditForm={mcp.openEditForm}
             handleSaveServer={mcp.handleSaveServer}
             handleToggleServer={mcp.handleToggleServer}
             handleRetryServer={mcp.handleRetryServer}
             handleDeleteServer={mcp.handleDeleteServer}
+            handleDeleteDraft={mcp.handleDeleteDraft}
+            parseConfigText={mcp.parseConfigText}
+            scopePathHint={mcp.scopePathHint}
+            scopePathLabel={mcp.scopePathLabel}
+            isEditing={mcp.isEditing}
+            refreshServers={mcp.refreshServers}
           />
         );
       case "appearance":

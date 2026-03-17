@@ -46,8 +46,8 @@ export function AccountSettings({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
-      transition={{ duration: 0.25 }}
-      className="max-w-[600px] space-y-12"
+      transition={{ duration: 0.3 }}
+      className="space-y-12 pb-24"
     >
       <div>
         <h2 className="mb-1 text-[20px] font-medium text-zinc-100">Account</h2>

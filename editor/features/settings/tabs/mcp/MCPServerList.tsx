@@ -19,27 +19,34 @@ export function MCPServerList({
   onRetry,
   onDelete,
 }: MCPServerListProps) {
-  return (
-    <section className="space-y-3">
-      <h3 className="text-[11px] font-medium uppercase tracking-widest text-zinc-600">
-        Configured Servers ({servers.length})
-      </h3>
-      {servers.length === 0 ? (
+  if (isLoading) {
+    return (
+      <div className="space-y-1">
+        <div className="text-[12px] text-zinc-600">Loading servers...</div>
+      </div>
+    );
+  }
+
+  if (servers.length === 0) {
+    return (
+      <div className="space-y-1">
         <div className="text-[12px] text-zinc-600">No servers configured yet.</div>
-      ) : (
-        <div className="space-y-2">
-          {servers.map((server) => (
-            <MCPServerItem
-              key={server.id}
-              server={server}
-              onToggle={onToggle}
-              onEdit={onEdit}
-              onRetry={onRetry}
-              onDelete={onDelete}
-            />
-          ))}
-        </div>
-      )}
-    </section>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      {servers.map((server) => (
+        <MCPServerItem
+          key={server.id}
+          server={server}
+          onToggle={onToggle}
+          onEdit={onEdit}
+          onRetry={onRetry}
+          onDelete={onDelete}
+        />
+      ))}
+    </div>
   );
 }
