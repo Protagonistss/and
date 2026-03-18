@@ -46,6 +46,21 @@ npm run tauri:build
 
 构建结果将根据平台生成在相应的 `native/target/release/bundle` 目录下。
 
+## 🔧 运行时后端地址（Tauri 发布后可改）
+
+如果你准备发布 editor，但 backend 需要独立部署，可以在运行时通过 `env.json` 配置后端地址（无需重新打包前端）。
+
+- **项目级（优先）**：`<project>/.slate/env.json`
+- **用户级（兜底）**：`~/.slate/env.json`
+
+```json
+{
+  "backendUrl": "http://127.0.0.1:8000/api/v1"
+}
+```
+
+优先级（从高到低）：项目级 → 用户级 → `VITE_BACKEND_URL` → 默认值。
+
 ## 📄 参考文档
 
 - [前端开发指南](./editor/README.md)

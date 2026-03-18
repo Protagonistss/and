@@ -5,6 +5,7 @@ import { setProjectDir, getCurrentProjectPath } from '../services/config';
 import { useConfigStore } from './configStore';
 import { useEditorStore } from './editorStore';
 import { useGitStatusStore } from './gitStatusStore';
+import { refreshBackendEnv } from '@/services/backend/base';
 
 // Re-export types for convenience
 export type { ProjectInfo, ProjectFile } from '../services/project';
@@ -31,6 +32,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   loadProject: async (project: ProjectInfo) => {
     // 通知后端记录项目
     await setProjectDir(project.path);
+
+    // 刷新 backend env（项目级 env.json 优先）
+    await refreshBackendEnv({ projectPath: project.path });
 
     // 同步更新 configStore.workingDirectory（供 Agent 使用）
     useConfigStore.getState().setWorkingDirectory(project.path);

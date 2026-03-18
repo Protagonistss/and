@@ -12,10 +12,11 @@ import { useAuthStore, useMcpStore, useConversationStore } from "@/stores";
 import { useAgentStore } from "@/features/agent/store/agentStore";
 import { sessionStorage } from "@/services/storage";
 import { isTauriEnv } from "@/services/tauri";
+import { refreshBackendEnv } from "@/services/backend/base";
 
 function App() {
   const [isReady, setIsReady] = useState(false);
-  const { restoreLastProject } = useProjectStore();
+  const { restoreLastProject, currentProject } = useProjectStore();
   const { initialize: initializeMcp } = useMcpStore();
   const { restoreSession } = useAuthStore();
   const { loadFromStorage: loadConversations } = useConversationStore();
@@ -24,6 +25,7 @@ function App() {
   useEffect(() => {
     const initialize = async () => {
       await restoreLastProject();
+      await refreshBackendEnv({ projectPath: currentProject?.path ?? null });
       await initializeMcp();
       await restoreSession();
 
@@ -36,7 +38,14 @@ function App() {
     };
 
     initialize();
-  }, [initializeMcp, restoreLastProject, restoreSession, loadConversations, loadAgentRuns]);
+  }, [
+    initializeMcp,
+    restoreLastProject,
+    restoreSession,
+    loadConversations,
+    loadAgentRuns,
+    currentProject?.path,
+  ]);
 
   if (!isReady) {
     return (

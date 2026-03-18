@@ -63,4 +63,26 @@ editor/
 npm run tauri:dev
 ```
 
+## 🔧 运行时后端地址（Tauri 发布后可改）
+
+Slate Editor（Tauri 桌面端）支持通过 `env.json` 在**运行时**覆盖后端服务地址，方便你把 editor 与 backend 分开部署/本地切换。
+
+- **项目级（优先）**：`<project>/.slate/env.json`
+- **用户级（兜底）**：`~/.slate/env.json`
+
+文件格式：
+
+```json
+{
+  "backendUrl": "http://127.0.0.1:8000/api/v1"
+}
+```
+
+优先级（从高到低）：
+
+1. `<project>/.slate/env.json`
+2. `~/.slate/env.json`
+3. `VITE_BACKEND_URL`（构建期变量）
+4. 默认值（Tauri 下为 `http://127.0.0.1:8000/api/v1`）
+
 更多信息请参考根目录的 [README.md](../README.md)。

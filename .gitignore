@@ -12,6 +12,9 @@ src-tauri/target/
 # Rust/Cargo（应用项目建议提交 Cargo.lock 以保证构建可复现）
 **/target/
 
+# Project runtime env (local override)
+.slate/env.json
+
 # Logs
 logs/
 *.log

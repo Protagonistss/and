@@ -1,3 +1,7 @@
+import { getSlateDir } from "@/services/tauri/fs";
+import { isTauriEnv } from "@/services/tauri";
+import { resolveBackendUrlOverride } from "./env";
+
 export interface BackendDetailResponse {
   detail?: string;
 }
@@ -6,7 +10,10 @@ const isTauri =
   typeof window !== "undefined" &&
   ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
 
-const backendBaseUrl = (() => {
+let backendBaseUrlCache: string | null = null;
+let backendUrlOverride: string | null = null;
+
+function computeBackendBaseUrl(): string {
   const envValue =
     typeof import.meta !== "undefined" && typeof import.meta.env.VITE_BACKEND_URL === "string"
       ? import.meta.env.VITE_BACKEND_URL.trim()
@@ -14,15 +21,33 @@ const backendBaseUrl = (() => {
 
   const defaultBaseUrl = isTauri ? "http://127.0.0.1:8000/api/v1" : "/api/v1";
 
-  return (envValue || defaultBaseUrl).replace(/\/+$/, "");
-})();
+  return (backendUrlOverride || envValue || defaultBaseUrl).replace(/\/+$/, "");
+}
+
+export async function refreshBackendEnv(options?: { projectPath?: string | null }): Promise<void> {
+  if (!isTauriEnv) {
+    return;
+  }
+
+  const userSlateDir = await getSlateDir();
+  backendUrlOverride = await resolveBackendUrlOverride({
+    userSlateDir,
+    projectPath: options?.projectPath ?? null,
+  });
+
+  backendBaseUrlCache = null;
+}
 
 export function getBackendBaseUrl(): string {
-  return backendBaseUrl;
+  if (!backendBaseUrlCache) {
+    backendBaseUrlCache = computeBackendBaseUrl();
+  }
+  return backendBaseUrlCache;
 }
 
 export function buildBackendUrl(path: string): string {
-  return `${backendBaseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+  const base = getBackendBaseUrl();
+  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
 export function buildBackendAbsoluteUrl(path: string): string {
@@ -40,15 +65,16 @@ export function buildBackendAbsoluteUrl(path: string): string {
 }
 
 export function getBackendTargetLabel(): string {
-  if (!backendBaseUrl.startsWith("/")) {
-    return backendBaseUrl;
+  const base = getBackendBaseUrl();
+  if (!base.startsWith("/")) {
+    return base;
   }
 
   if (typeof window !== "undefined" && window.location?.origin) {
-    return `${window.location.origin}${backendBaseUrl}`;
+    return `${window.location.origin}${base}`;
   }
 
-  return backendBaseUrl;
+  return base;
 }
 
 export function getBackendNetworkErrorMessage(error: unknown, fallback: string): string {
