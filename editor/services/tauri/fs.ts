@@ -258,8 +258,12 @@ export async function getHomeDir(): Promise<string | null> {
   if (!isTauri) {
     return null;
   }
-  // 浏览器环境没有 homeDir
-  return null;
+  try {
+    const { homeDir } = await import('@tauri-apps/api/path');
+    return await homeDir();
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -271,4 +275,46 @@ export async function getDocumentDir(): Promise<string | null> {
   }
   // 浏览器环境没有 documentDir
   return null;
+}
+
+/**
+ * 追加内容到文件（如果文件不存在则创建）
+ */
+export async function appendFile(path: string, content: string): Promise<void> {
+  if (!isTauri) {
+    throw new Error('File system not available in browser');
+  }
+
+  const { exists: tauriExists } = await import('@tauri-apps/plugin-fs');
+  const { writeTextFile: tauriWriteTextFile } = await import('@tauri-apps/plugin-fs');
+  
+  let lastError: unknown;
+
+  for (const candidate of buildPathCandidates(path)) {
+    try {
+      const fileExists = await tauriExists(candidate);
+      if (fileExists) {
+        const existingContent = await readTextFile(candidate);
+        await tauriWriteTextFile(candidate, existingContent + content);
+      } else {
+        await tauriWriteTextFile(candidate, content);
+      }
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError ?? new Error(`Failed to append to file: ${path}`);
+}
+
+/**
+ * 获取 .slate 目录路径
+ */
+export async function getSlateDir(): Promise<string | null> {
+  const home = await getHomeDir();
+  if (!home) return null;
+  
+  const sep = isWindowsAbsolutePath(home) ? '\\' : '/';
+  return `${home}${sep}.slate`;
 }

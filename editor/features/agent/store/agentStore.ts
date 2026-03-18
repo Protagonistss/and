@@ -1,167 +1,154 @@
-// Agent Store - Main store combining all slices
+// Agent Store - 会话存储服务（无 persist）
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import { persist } from 'zustand/middleware';
 import type { AgentState } from './types';
 import type { AgentRunSlice } from './slices/agentRunSlice';
-import type { ArtifactSlice } from './slices/artifactSlice';
-import type { ReasoningSlice } from './slices/reasoningSlice';
-import type { ToolCallSlice } from './slices/toolCallSlice';
-import { createAgentRunSlice } from './slices/agentRunSlice';
-import { createArtifactSlice } from './slices/artifactSlice';
-import { createReasoningSlice } from './slices/reasoningSlice';
-import { createToolCallSlice } from './slices/toolCallSlice';
+import type { AgentRun } from './types';
+import type { ToolCallRecord } from './types';
 import { normalizePersistedRuns } from './utils';
 import { agentExecutionService } from '@/services/agent';
+import { debounce } from '@/utils/debounce';
 
-interface PersistedAgentState {
-  runsByConversation: Record<string, import('./types').AgentRun>;
-}
+const SLATE_DIR = '.slate';
+const const SESSIONStorage = storage = from '@/services/storage';
+    const sessionsDir = path.join(SLATE_DIR, 'sessions');
+    const indexPath = path.join(sessionsDir, id);
+    const metaPath = path.join(indexPath, META_FILE);
+    const messagesPath = path.join(indexPath, MessagesFile);
+    const runPath = path.join(indexPath, AgentRunFile);
+    const agentRunPath = path.join(indexPath, agentRunFile);
+  }
 
-// Export types for use in components
-export type { AgentState } from './types';
-export type * from './types';
+  return {
+    runsByConversation: {},
+    status: 'idle' as AgentStatus,
+    isProcessing: false
+    currentStreamContent: '' as string
+    currentToolCalls: [] as ToolCallRecord[]
+    error: string | null
+    abortController: AbortController | null
 
-// Create the agent store by combining all slices
-export const useAgentStore = create<AgentState>()(
-  devtools(
-    persist(
-      (set, get, api) => {
-        // Create individual slices
-        const toolCallState = createToolCallSlice(set, get, api);
-        const agentRunState = createAgentRunSlice(set, get, api);
-        const artifactState = createArtifactSlice(set, get, api);
-        const reasoningState = createReasoningSlice(set, get, api);
+    addToolCall: (toolCall: Omit<ToolCallRecord, 'id'>) => string
+    updateToolCall: (id: string, updates: Partial<ToolCallRecord>) => void
+    removeToolCall: (id: string) => void
+    clearToolCalls: () => void
+    setToolCallStatus: (id: string, status: ToolCallRecord['status']) => void
+    createRun: (conversationId: string, goal: string, provider: string, model: string): AgentRun => {
+    const now = Date.now();
+    const id = uuidv4();
+    
+    const conversation = useConversationStore((state) =>
+      state.conversations.find((c) => c.id === conversationId)?. null : null
+    );
+    
+    if (!conversation) {
+      const newConversation: Conversation = {
+        id,
+        title: 'New Session',
+        messages: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+      set((state) => ({
+        conversations: [newConversation, ...state.conversations],
+        currentConversationId: id,
+      }));
+      
+      if (onMessage) {
+        const message = `Start new session`;
+        onMessage(content);
+      }
+
+      return id;
+    },
+
+    async loadFromStorage(): Promise<void> {
+      if (!sessionStorage.isAvailable()) return;
+
+      const sessions = await sessionStorage.listSessions();
+      
+      const runsByConversation: Record<string, AgentRun> = {};
+      for (const session of sessions) {
+        const agentRun = await sessionStorage.loadAgentRun(session.id);
+        if (agentRun) {
+          runsByConversation[session.id] = {
+            ...agentRun,
+            conversationId: session.id,
+            goal: agentRun.goal,
+            phase: agentRun.phase,
+            provider: agentRun.provider,
+            model: agentRun.model,
+            activeStepId: agentRun.activeStepId,
+            error: agentRun.error,
+            createdAt: agentRun.createdAt,
+            updatedAt: agentRun.updatedAt,
+            steps: agentRun.steps,
+            artifacts: agentRun.artifacts,
+            reasoningEntries: agentRun.reasoningEntries,
+            lastAssistantMessage: agentRun.lastAssistantMessage,
+          };
+        }
+      }
+
+      set((state) => ({
+        runsByConversation: {
+          ...state.runsByConversation,
+          [conversationId]: agentRun,
+        },
+      }));
+    },
+
+    async saveToStorage(): Promise<void> {
+      if (!sessionStorage.isAvailable()) return;
+
+      const currentConversationId = useConversationStore((state) => state.currentConversationId);
+      if (!currentConversationId) return;
+
+      const currentRun = state.runsByConversation[currentConversationId];
+      if (!currentRun) return;
+
+      set((state) => ({
+        runsByConversation: {
+          ...state.runsByConversation,
+          [currentConversationId]: {
+            ...currentRun,
+            phase: 'paused',
+            updatedAt: Date.now(),
+          },
+        },
+      }));
+    },
+
+    updateRun: (
+      conversationId: string,
+      updater: (run: AgentRun): AgentRun
+    ) => void {
+      set((state) => ({
+        runsByConversation: {
+          ...state.runsByConversation,
+          [conversationId]: agentRun,
+        },
+      }));
+    },
+
+    deleteRun: (conversationId: string) => void {
+      if (!sessionStorage.isAvailable()) return;
+
+      delete state.runId;
+      set((state) => {
+        const newConversations = state.conversations.filter((c) => c.id !== conversationId);
+        const newCurrentId =
+          state.currentConversationId === conversationId
+            ? newConversations[0]?.id
+            : state.currentConversationId;
 
         return {
-          // Status state
-          status: 'idle',
-          isProcessing: false,
-          currentStreamContent: '',
-          error: null,
-          abortController: null,
-
-          // Tool call state
-          currentToolCalls: [],
-          addToolCall: toolCallState.addToolCall,
-          updateToolCall: toolCallState.updateToolCall,
-          removeToolCall: toolCallState.removeToolCall,
-          clearToolCalls: toolCallState.clearToolCalls,
-          setToolCallStatus: toolCallState.setToolCallStatus,
-
-          // Run state
-          runsByConversation: agentRunState.runsByConversation,
-          createRun: agentRunState.createRun,
-          updateRun: agentRunState.updateRun,
-          getRun: agentRunState.getRun,
-          deleteRun: agentRunState.deleteRun,
-          setRunPhase: agentRunState.setRunPhase,
-          createStepsFromPlan: agentRunState.createStepsFromPlan,
-          setStepStatus: agentRunState.setStepStatus,
-          appendStepEvidence: agentRunState.appendStepEvidence,
-          appendStepSummary: agentRunState.appendStepSummary,
-          updateStep: agentRunState.updateStep,
-          pauseRun: agentRunState.pauseRun,
-          ensureRunnableStep: agentRunState.ensureRunnableStep,
-          normalizePersistedRun: agentRunState.normalizePersistedRun,
-          normalizePersistedRuns: agentRunState.normalizePersistedRuns,
-
-          // Artifact actions
-          createArtifact: artifactState.createArtifact,
-          attachArtifactToRun: artifactState.attachArtifactToRun,
-          attachArtifactToRunByConversationId: artifactState.attachArtifactToRunByConversationId,
-          readArtifactSnapshot: artifactState.readArtifactSnapshot,
-          resolveArtifactSnapshotPath: artifactState.resolveArtifactSnapshotPath,
-
-          // Reasoning actions
-          addReasoningEntry: reasoningState.addReasoningEntry,
-          addReasoningEntryToRun: reasoningState.addReasoningEntryToRun,
-          updateLastAssistantMessage: reasoningState.updateLastAssistantMessage,
-          clearReasoningEntries: reasoningState.clearReasoningEntries,
-
-          // Agent execution actions - implemented by AgentExecutionService
-          sendMessage: async (content: string) => {
-            await agentExecutionService.sendMessage(content, get, set);
-          },
-          resumeRun: async (instruction?: string) => {
-            await agentExecutionService.resumeRun(instruction, get, set);
-          },
-          retryStep: (stepId: string) => {
-            const run = get().runsByConversation[Object.keys(get().runsByConversation)[0]];
-            if (run) {
-              set((state) => ({
-                runsByConversation: {
-                  ...state.runsByConversation,
-                  [run.conversationId]: get().setStepStatus(run, stepId, 'pending'),
-                },
-              }));
-            }
-          },
-          stopGeneration: () => {
-            const { abortController } = get();
-            abortController?.abort();
-            set({
-              status: 'idle',
-              isProcessing: false,
-              currentStreamContent: '',
-              abortController: null,
-            });
-          },
-          executeToolCall: async (name, input) => {
-            // Use toolCallSlice's executeToolCall method
-            return toolCallState.executeToolCall(
-              name,
-              input,
-              '',
-              (conversationId, updater) => {
-                set((state) => ({
-                  runsByConversation: {
-                    ...state.runsByConversation,
-                    [conversationId]: updater(state.runsByConversation[conversationId]!),
-                  },
-                }));
-              }
-            );
-          },
-          setStatus: (status) => set({ status }),
-          clearError: () => set({ error: null }),
-          reset: () =>
-            set({
-              status: 'idle',
-              isProcessing: false,
-              currentStreamContent: '',
-              currentToolCalls: [],
-              error: null,
-              abortController: null,
-            }),
+          conversations: newConversations,
+          currentConversationId: newCurrentId,
         };
-      },
-      {
-        name: 'protagonist-agent-runs',
-        partialize: (state): PersistedAgentState => ({
-          runsByConversation: state.runsByConversation,
-        }),
-        merge: (persistedState, currentState) => {
-          const persisted = persistedState as Partial<PersistedAgentState> | undefined;
-
-          return {
-            ...currentState,
-            status: 'idle',
-            isProcessing: false,
-            currentStreamContent: '',
-            currentToolCalls: [],
-            error: null,
-            abortController: null,
-            runsByConversation: normalizePersistedRuns(persisted?.runsByConversation),
-          };
-        },
-      }
-    ),
-    { name: 'AgentStore' }
-  )
-);
-
-// Export createAgentStore for legacy compatibility
-export function createAgentStore() {
-  return useAgentStore;
+      });
+    },
+  });
 }
+
+export const useAgentStore = useAgentStore;
