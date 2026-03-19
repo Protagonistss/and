@@ -1,8 +1,8 @@
 // AgentView - 主视图组件（已重构，还原原型时间线布局）
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { matchPath, useLocation, useNavigate, useParams } from "react-router";
-import { Bot, Play, Plus, ChevronDown, CornerLeftUp, Square, User } from "lucide-react";
+import { Bot, Play, Plus, CornerLeftUp, Square, User } from "lucide-react";
 import {
   AgentEmptyState,
   AgentStepList,
@@ -48,6 +48,8 @@ export function AgentView() {
   const setCurrentConversation = useConversationStore((state) => state.setCurrentConversation);
   const state = useAgentState();
   const [historyAvatarFailed, setHistoryAvatarFailed] = useState(false);
+  const timelineScrollRef = useRef<HTMLDivElement | null>(null);
+  const firstReasoningElByStepIdRef = useRef(new Map<string, HTMLDivElement>());
 
   useEffect(() => {
     if (!routeConversationId) {
@@ -96,6 +98,29 @@ export function AgentView() {
     error: state.error,
     expandedFile: state.expandedFile,
   });
+
+  const selectedStepId = state.currentRun?.activeStepId || null;
+
+  const firstReasoningIdByStepId = useMemo(() => {
+    const map = new Map<string, string>();
+    calculations.reasoningEntries.forEach((entry) => {
+      if (!entry.stepId) return;
+      if (!map.has(entry.stepId)) {
+        map.set(entry.stepId, entry.id);
+      }
+    });
+    return map;
+  }, [calculations.reasoningEntries]);
+
+  useEffect(() => {
+    if (!selectedStepId) return;
+    const el = firstReasoningElByStepIdRef.current.get(selectedStepId);
+    if (el) {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      return;
+    }
+    timelineScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [selectedStepId]);
 
   useAgentEffects({
     goalDraft: state.goalDraft,
@@ -231,6 +256,11 @@ export function AgentView() {
             </div>
             <AgentStepList
               displaySteps={calculations.displaySteps}
+              activeStepId={selectedStepId}
+              onSelectStep={(step) => {
+                if (!state.currentConversationId) return;
+                state.setActiveStepId(state.currentConversationId, step.id);
+              }}
               onEditStep={handlers.handleEditStep}
               onRetryStep={handlers.handleRetryStep}
             />
@@ -238,7 +268,10 @@ export function AgentView() {
 
           <div className="lg:col-span-3 flex flex-col h-full min-h-0">
             <div className="flex flex-col h-full min-h-0 pl-2 lg:pl-6 text-zinc-300 font-sans">
-              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800/50 pr-4 pb-12 pt-2">
+              <div
+                ref={timelineScrollRef}
+                className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-zinc-800/50 pr-4 pb-12 pt-2"
+              >
                 {historyMessages.map((message) => (
                   <TimelineNode
                     key={message.id}
@@ -262,14 +295,35 @@ export function AgentView() {
 
                 {calculations.processTimelineItems.map((item) =>
                   item.type === "reasoning" ? (
-                    <TimelineReasoningNode
+                    <div
                       key={item.id}
-                      entry={item.entry}
-                      isExpanded={expandedReasoningId === item.entry.id}
-                      onToggle={() =>
-                        setExpandedReasoningId(expandedReasoningId === item.entry.id ? null : item.entry.id)
-                      }
-                    />
+                      ref={(node) => {
+                        if (!node) return;
+                        const stepId = item.entry?.stepId;
+                        if (!stepId) return;
+                        const firstId = firstReasoningIdByStepId.get(stepId);
+                        if (firstId && firstId === item.entry?.id) {
+                          firstReasoningElByStepIdRef.current.set(stepId, node);
+                        }
+                      }}
+                    >
+                      <TimelineReasoningNode
+                        entry={item.entry}
+                        label={
+                          item.entry?.stepId && state.currentRun
+                            ? `Reasoning: ${state.currentRun.steps.find((s) => s.id === item.entry?.stepId)?.title || item.entry.stepId}`
+                            : "Reasoning"
+                        }
+                        subLabel={item.entry?.phase ? `phase: ${item.entry.phase}` : undefined}
+                        isExpanded={expandedReasoningId === item.entry.id}
+                        onToggle={() => {
+                          if (item.entry?.stepId && state.currentConversationId) {
+                            state.setActiveStepId(state.currentConversationId, item.entry.stepId);
+                          }
+                          setExpandedReasoningId(expandedReasoningId === item.entry.id ? null : item.entry.id);
+                        }}
+                      />
+                    </div>
                   ) : (
                     <TimelineToolCallNode
                       key={item.id}
@@ -279,10 +333,18 @@ export function AgentView() {
                         setExpandedToolCall(expandedToolCall === item.toolCall.id ? null : item.toolCall.id)
                       }
                       onConfirm={() => {
-                        state.resumeRun();
+                        if (item.toolCall.status === 'pending') {
+                          state.confirmToolCall(item.toolCall.id);
+                        } else {
+                          state.resumeRun();
+                        }
                       }}
                       onReject={() => {
-                        state.stopGeneration();
+                        if (item.toolCall.status === 'pending') {
+                          state.rejectToolCall(item.toolCall.id);
+                        } else {
+                          state.stopGeneration();
+                        }
                       }}
                     />
                   )
@@ -380,16 +442,6 @@ export function AgentView() {
               >
                 <Plus size={15} />
               </button>
-
-              <div className="w-px h-3.5 bg-zinc-800 mx-1" />
-
-              <div className="relative group/mode">
-                <button className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-zinc-800/50 text-zinc-400 hover:text-zinc-200 transition-colors text-xs font-medium">
-                  <Bot size={13} className="text-zinc-500 group-hover/mode:text-zinc-400 transition-colors" />
-                  <span>Agent Mode</span>
-                  <ChevronDown size={12} className="opacity-50 group-hover/mode:opacity-100 transition-opacity" />
-                </button>
-              </div>
             </>
           }
           hintSlot={

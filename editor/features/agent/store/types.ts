@@ -105,6 +105,8 @@ export interface AgentState {
   removeToolCall: (id: string) => void;
   clearToolCalls: () => void;
   setToolCallStatus: (id: string, status: ToolCallRecord['status']) => void;
+  confirmToolCall: (toolCallId: string) => void;
+  rejectToolCall: (toolCallId: string) => void;
 
   // Run actions
   createRun: (conversationId: string, goal: string, provider: string, model: string) => AgentRun;
@@ -112,6 +114,7 @@ export interface AgentState {
   getRun: (conversationId: string) => AgentRun | null;
   deleteRun: (conversationId: string) => void;
   setRunPhase: (conversationId: string, phase: AgentRunPhase) => void;
+  setActiveStepId: (conversationId: string, stepId: string | null) => void;
   createStepsFromPlan: (parsedSteps: ParsedPlanStep[]) => AgentStep[];
   setStepStatus: (run: AgentRun, stepId: string, status: AgentStepStatus, summary?: string) => AgentRun;
   appendStepEvidence: (run: AgentRun, stepId: string, evidence: string) => AgentRun;

@@ -28,7 +28,7 @@ function normalizeSchema(
 
 class McpRemoteTool implements ITool {
   readonly definition;
-  readonly requiresConfirmation = false;
+  readonly requiresConfirmation = true;
   readonly dangerLevel = 'medium' as const;
 
   constructor(private readonly tool: McpToolDescriptor) {

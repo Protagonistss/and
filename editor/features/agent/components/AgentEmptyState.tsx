@@ -1,7 +1,7 @@
 // AgentEmptyState 组件 - 显示空状态和初始化界面
 import { useState } from "react";
 import { motion } from "motion/react";
-import { Layout, FileCode, Globe, Terminal, Bot, Plus, Settings, Play } from "lucide-react";
+import { Layout, FileCode, Globe, Terminal, Bot, Plus, Play } from "lucide-react";
 import { AgentComposer } from "@/features/agent/components/AgentComposer";
 
 interface AgentEmptyStateProps {
@@ -43,7 +43,7 @@ export function AgentEmptyState({ onStart }: AgentEmptyStateProps) {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1, duration: 0.4 }}
-        className="mb-8 flex flex-col rounded-xl border border-graphite bg-charcoal shadow-sm transition-all focus-within:border-zinc-600 focus-within:ring-1 focus-within:ring-zinc-600/20"
+        className="mb-8 flex flex-col"
       >
         <AgentComposer
           value={input}
@@ -73,13 +73,6 @@ export function AgentEmptyState({ onStart }: AgentEmptyStateProps) {
               >
                 <Plus size={16} />
               </button>
-              <button
-                type="button"
-                className="rounded-lg p-2 transition-colors hover:bg-white/5 hover:text-zinc-300"
-                title="Settings"
-              >
-                <Settings size={16} />
-              </button>
             </>
           }
           hintSlot={
@@ -88,7 +81,6 @@ export function AgentEmptyState({ onStart }: AgentEmptyStateProps) {
               <kbd className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 font-sans">Enter</kbd>
             </div>
           }
-          containerClassName="rounded-none border-0 shadow-none bg-transparent focus-within:bg-transparent"
           textareaClassName="min-h-[120px] p-4 pb-0 text-[15px] leading-relaxed text-zinc-200"
         />
       </motion.div>

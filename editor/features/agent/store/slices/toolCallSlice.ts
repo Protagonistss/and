@@ -6,6 +6,7 @@ import type { ToolResult } from '@/services/tools';
 import { INTERNAL_AGENT_TOOL_SET, INTERNAL_AGENT_TOOL_NAMES } from '../types';
 import type { ArtifactKind, AgentStepStatus, AgentReasoningPhase } from '../types';
 import { toolRegistry } from '@/services/tools';
+import { resolvePendingToolCall } from '@/services/agent/execution/toolConfirmation';
 import { useConfigStore } from '@/stores/configStore';
 import { useEditorStore } from '@/stores/editorStore';
 import { setStepStatus, appendStepSummary, attachArtifactToRun, addReasoningEntry } from '../utils';
@@ -31,6 +32,8 @@ export interface ToolCallSlice {
   removeToolCall: (id: string) => void;
   clearToolCalls: () => void;
   setToolCallStatus: (id: string, status: ToolCallRecord['status']) => void;
+  confirmToolCall: (toolCallId: string) => void;
+  rejectToolCall: (toolCallId: string) => void;
 
   // Tool execution helpers
   executeToolCall: (
@@ -81,6 +84,14 @@ export const createToolCallSlice: StateCreator<ToolCallSlice> = (set, get) => ({
 
   setToolCallStatus: (id, status) => {
     get().updateToolCall(id, { status });
+  },
+
+  confirmToolCall: (toolCallId) => {
+    resolvePendingToolCall(toolCallId, 'confirm');
+  },
+
+  rejectToolCall: (toolCallId) => {
+    resolvePendingToolCall(toolCallId, 'reject');
   },
 
   executeToolCall: async (name, input, conversationId, updateRunState) => {

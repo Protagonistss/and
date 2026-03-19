@@ -15,6 +15,8 @@ export function useAgent() {
   const resumeRun = useAgentStore((state) => state.resumeRun);
   const retryStep = useAgentStore((state) => state.retryStep);
   const stopGeneration = useAgentStore((state) => state.stopGeneration);
+  const confirmToolCall = useAgentStore((state) => state.confirmToolCall);
+  const rejectToolCall = useAgentStore((state) => state.rejectToolCall);
   const clearError = useAgentStore((state) => state.clearError);
   const reset = useAgentStore((state) => state.reset);
 
@@ -84,6 +86,8 @@ export function useAgent() {
     resumeRun: resume,
     retryStep: retry,
     stopGeneration: stop,
+    confirmToolCall,
+    rejectToolCall,
     clearError,
     reset,
   };

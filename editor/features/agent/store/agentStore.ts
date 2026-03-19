@@ -11,6 +11,7 @@ import { createArtifactSlice } from './slices/artifactSlice';
 import { createReasoningSlice } from './slices/reasoningSlice';
 import { createToolCallSlice } from './slices/toolCallSlice';
 import { agentExecutionService } from '@/services/agent';
+import { rejectAllPendingToolCalls } from '@/services/agent/execution/toolConfirmation';
 import { sessionStorage, type StoredMessage, type SessionMeta } from '@/services/storage';
 import type { AgentRun } from './types';
 import { parsePlanToolInput } from '@/services/agent/run/planParser';
@@ -186,6 +187,8 @@ export const useAgentStore = create<AgentStoreState>()(
         removeToolCall: toolCallState.removeToolCall,
         clearToolCalls: toolCallState.clearToolCalls,
         setToolCallStatus: toolCallState.setToolCallStatus,
+        confirmToolCall: toolCallState.confirmToolCall,
+        rejectToolCall: toolCallState.rejectToolCall,
 
         runsByConversation: agentRunState.runsByConversation,
         createRun: agentRunState.createRun,
@@ -193,6 +196,25 @@ export const useAgentStore = create<AgentStoreState>()(
         getRun: agentRunState.getRun,
         deleteRun: agentRunState.deleteRun,
         setRunPhase: agentRunState.setRunPhase,
+        setActiveStepId: (conversationId: string, stepId: string | null) => {
+          if (!conversationId) return;
+          set((state) => {
+            const run = state.runsByConversation[conversationId];
+            if (!run) return state;
+            if (run.activeStepId === stepId) return state;
+            return {
+              ...state,
+              runsByConversation: {
+                ...state.runsByConversation,
+                [conversationId]: {
+                  ...run,
+                  activeStepId: stepId,
+                  updatedAt: Date.now(),
+                },
+              },
+            };
+          });
+        },
         createStepsFromPlan: agentRunState.createStepsFromPlan,
         setStepStatus: agentRunState.setStepStatus,
         appendStepEvidence: agentRunState.appendStepEvidence,
@@ -243,6 +265,7 @@ export const useAgentStore = create<AgentStoreState>()(
           }
         },
         stopGeneration: () => {
+          rejectAllPendingToolCalls();
           const { abortController } = get();
           abortController?.abort();
           set({

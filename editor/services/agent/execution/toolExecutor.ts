@@ -1,9 +1,8 @@
 // Tool Executor - 工具执行
-import { streamBackendLLMChat } from '../../backend/llm';
 import { toolRegistry } from '../../tools';
 import type { ToolResultContentBlock, ToolUseContentBlock } from '../../llm/types';
 import type { ToolResult } from '../../tools';
-import type { MessageContext, StoreGetter, StoreSetter } from '../types';
+import type { MessageContext, StoreSetter } from '../types';
 import { INTERNAL_AGENT_TOOL_NAMES, INTERNAL_AGENT_TOOL_SET } from '../internal/tools';
 import { serializeToolResult, sanitizePathSegment } from '../internal/utils';
 import {
@@ -18,6 +17,7 @@ import type { AgentRun, AgentReasoningPhase, AgentStepStatus, ArtifactKind } fro
 import type { ToolCallRecord } from '@/features/agent/store/types';
 import { now } from '@/utils/date';
 import { useConversationStore } from '@/stores/conversationStore';
+import { registerPendingToolCall } from '@/services/agent/execution/toolConfirmation';
 
 /**
  * Executes a single tool call
@@ -47,21 +47,82 @@ export async function executeToolUses(
 ): Promise<void> {
   const conversationStore = useConversationStore.getState();
 
+  const USER_REJECTED_MESSAGE = 'User rejected the tool call';
+
   for (const toolUse of toolUses) {
     const isRuntimeTool = INTERNAL_AGENT_TOOL_SET.has(toolUse.name);
 
     if (!isRuntimeTool) {
+      const tool = toolRegistry.get(toolUse.name);
+      const needsConfirmation = tool?.requiresConfirmation === true;
+
+      const initialStatus: ToolCallRecord['status'] = needsConfirmation ? 'pending' : 'running';
       const pendingRecord: ToolCallRecord = {
         id: toolUse.id,
         name: toolUse.name,
         input: toolUse.input,
-        status: 'running',
+        status: initialStatus,
       };
 
       setState((state: import('@/features/agent/store/types').AgentState) => ({
         status: 'tool_call',
         currentToolCalls: [...state.currentToolCalls, pendingRecord],
       }));
+
+      if (needsConfirmation) {
+        const choice = await registerPendingToolCall(toolUse.id);
+        if (choice === 'reject') {
+          conversationStore.addMessage(conversationId, {
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: toolUse.id,
+                content: USER_REJECTED_MESSAGE,
+                is_error: true,
+              },
+            ],
+          });
+          setState((state: import('@/features/agent/store/types').AgentState) => ({
+            currentToolCalls: state.currentToolCalls.map((call) =>
+              call.id === toolUse.id
+                ? { ...call, status: 'error' as const, error: USER_REJECTED_MESSAGE }
+                : call
+            ),
+            runsByConversation: updateRunState(
+              { runsByConversation: state.runsByConversation },
+              conversationId,
+              (run) => {
+                const targetStepId =
+                  run.activeStepId ||
+                  run.steps.find((step) => step.status === 'running')?.id ||
+                  run.steps.find((step) => step.status === 'pending')?.id ||
+                  null;
+                if (!targetStepId) return run;
+                let nextRun = appendStepEvidence(
+                  run,
+                  targetStepId,
+                  `${toolUse.name}: rejected by user`
+                );
+                nextRun = attachArtifactToRun(nextRun, {
+                  stepId: targetStepId,
+                  path: `agent/tools/${sanitizePathSegment(toolUse.name)}.json`,
+                  kind: 'tool_result',
+                  title: toolUse.name,
+                  preview: USER_REJECTED_MESSAGE,
+                });
+                return nextRun;
+              }
+            ),
+          }));
+          continue;
+        }
+        setState((state: import('@/features/agent/store/types').AgentState) => ({
+          currentToolCalls: state.currentToolCalls.map((call) =>
+            call.id === toolUse.id ? { ...call, status: 'running' as const } : call
+          ),
+        }));
+      }
     }
 
     const toolResult = await executeToolCallFn(toolUse.name, toolUse.input);

@@ -1,9 +1,7 @@
 // AgentControls - 控制按钮和输入区域
-import { useRef, type KeyboardEvent } from "react";
-import { Bot, Pause, Play, Plus, RotateCcw, Settings } from "lucide-react";
-import { useNavigate } from "react-router";
+import { Bot, Pause, Play, Plus, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AgentModelSelect } from "@/features/agent/components";
+import { AgentComposer } from "@/features/agent/components/AgentComposer";
 
 export interface AgentControlsProps {
   goalDraft: string;
@@ -24,16 +22,6 @@ export function AgentControls({
   onPrimaryAction,
   onNewSession,
 }: AgentControlsProps) {
-  const navigate = useNavigate();
-  const goalInputRef = useRef<HTMLTextAreaElement | null>(null);
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey && goalDraft.trim()) {
-      event.preventDefault();
-      onPrimaryAction();
-    }
-  };
-
   return (
     <section className="space-y-4">
       {/* 标题和主操作按钮 */}
@@ -78,56 +66,42 @@ export function AgentControls({
       </div>
 
       {/* 目标输入框 */}
-      <div className="group relative flex flex-col rounded-xl border border-graphite bg-charcoal shadow-lg transition-colors focus-within:border-zinc-700 focus-within:bg-zinc-900/50">
-        <textarea
-          ref={goalInputRef}
-          className="min-h-[24px] w-full resize-none border-none bg-transparent px-3 pt-3 pb-0 text-[14px] font-normal leading-[1.5] text-zinc-300 placeholder-zinc-600 focus:outline-none"
-          value={goalDraft}
-          onChange={(event) => onGoalChange(event.target.value)}
-          placeholder="What do you want to build today?"
-          rows={1}
-          onKeyDown={handleKeyDown}
-        />
-        <div className="flex items-center justify-between p-2">
-          <div className="flex items-center gap-1 pl-1">
+      <AgentComposer
+        value={goalDraft}
+        onChange={(next) => onGoalChange(next)}
+        onSubmit={onPrimaryAction}
+        disabled={isProcessing}
+        placeholder="What do you want to build today?"
+        primaryLabel={
+          <>
+            <Play size={12} fill="currentColor" />
+            {canResumeCurrentRun ? "Continue" : "Initialize"}
+          </>
+        }
+        canSubmit={Boolean(goalDraft.trim()) && !isProcessing}
+        showModelSelect
+        modelSelectDisabled={isProcessing}
+        modelSelectClassName="mr-2"
+        leftSlot={
+          <>
             <button
               type="button"
-              className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+              className="rounded-lg p-2 transition-colors hover:bg-white/5 hover:text-zinc-300"
               title="Add context"
+              disabled={isProcessing}
             >
-              <Plus size={15} />
+              <Plus size={16} />
             </button>
-            <button
-              type="button"
-              onClick={() => navigate("/settings?tab=models")}
-              className="rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
-              title="Settings"
-            >
-              <Settings size={15} />
-            </button>
+          </>
+        }
+        hintSlot={
+          <div className="hidden items-center gap-1.5 text-[11px] font-medium text-zinc-500 sm:flex">
+            <span>Press</span>
+            <kbd className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 font-sans">Enter</kbd>
           </div>
-          <div className="flex items-center gap-3 pr-1">
-            <AgentModelSelect className="mr-2" disabled={isProcessing} />
-            <div className="hidden items-center gap-1.5 text-[11px] text-zinc-500 sm:flex">
-              <span>Press</span>
-              <kbd className="rounded border border-zinc-700 bg-zinc-800/50 px-1.5 py-0.5">Enter</kbd>
-            </div>
-            <button
-              onClick={onPrimaryAction}
-              disabled={!goalDraft.trim() || isProcessing}
-              className={cn(
-                "flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-all",
-                goalDraft.trim() && !isProcessing
-                  ? "bg-zinc-300 text-zinc-900 hover:bg-white"
-                  : "cursor-not-allowed bg-zinc-800 text-zinc-500"
-              )}
-            >
-              <Play size={12} fill="currentColor" />
-              {canResumeCurrentRun ? "Continue" : "Initialize"}
-            </button>
-          </div>
-        </div>
-      </div>
+        }
+        textareaClassName="min-h-[120px] p-4 pb-0 text-[15px] leading-relaxed text-zinc-200"
+      />
     </section>
   );
 }

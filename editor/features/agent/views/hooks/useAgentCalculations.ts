@@ -264,29 +264,11 @@ export function useAgentCalculations(params: UseAgentCalculationsParams) {
         return;
       }
 
-      const nextEntry = rawReasoningEntries[index + 1] || null;
-      if (
-        isGeneratedWorkingNote(entry, currentRun) &&
-        nextEntry &&
-        nextEntry.stepId === entry.stepId &&
-        normalizeReasoningText(nextEntry.text) !== normalizedText
-      ) {
-        return;
-      }
-
-      if (
-        hiddenSummaryReasoning &&
-        entry.id === hiddenSummaryReasoning.id &&
-        rawReasoningEntries.length > 1
-      ) {
-        return;
-      }
-
       visibleEntries.push(entry);
     });
 
     return visibleEntries;
-  }, [currentRun, hiddenSummaryReasoning, rawReasoningEntries]);
+  }, [rawReasoningEntries]);
 
   const shouldShowReasoningError =
     Boolean(currentRun?.error) &&

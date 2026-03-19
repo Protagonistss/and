@@ -53,12 +53,12 @@ export function SessionItem({
       onClick={() => !disabled && !isRenaming && onClick()}
       onMouseLeave={() => setIsConfirmingDelete(false)}
       className={cn(
-        "group relative flex flex-col gap-1 rounded-lg border px-3 py-2 transition-all",
+        "group relative flex flex-col gap-1.5 rounded-lg border px-3 py-2.5 transition-all",
         disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer",
         isActive ? "border-zinc-700 bg-zinc-800/80" : "border-transparent hover:bg-zinc-800/40"
       )}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-start justify-between gap-2">
         {isRenaming ? (
           <input
             ref={inputRef}
@@ -81,7 +81,7 @@ export function SessionItem({
         ) : (
           <span
             className={cn(
-              "pr-10 text-sm font-medium",
+              "min-w-0 flex-1 text-sm font-medium leading-snug whitespace-normal break-words line-clamp-2",
               isActive ? "text-zinc-100" : "text-zinc-400 group-hover:text-zinc-200"
             )}
           >
@@ -92,9 +92,10 @@ export function SessionItem({
         {!isRenaming && (
           <div
             className={cn(
-              "absolute right-2 top-2 flex items-center gap-1 opacity-0 transition-opacity",
-              !disabled && "group-hover:opacity-100",
-              isActive && !disabled && "opacity-100"
+              "flex items-center gap-1 pt-0.5 overflow-hidden max-w-0 opacity-0 transition-all",
+              !disabled && "group-hover:max-w-14 group-hover:opacity-100 group-hover:pointer-events-auto",
+              isActive && !disabled && "max-w-14 opacity-100 pointer-events-auto",
+              "pointer-events-none"
             )}
           >
             {isConfirmingDelete ? (

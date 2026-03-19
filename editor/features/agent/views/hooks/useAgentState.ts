@@ -6,6 +6,7 @@ import { useLLMCatalogStore } from "@/stores/llmCatalogStore";
 import { useProjectStore } from "@/stores/projectStore";
 import { useConversationStore } from "@/stores/conversationStore";
 import { useAgent } from "@/features/agent/hooks";
+import { useAgentStore } from "@/features/agent/store/agentStore";
 import type { Message } from "@/services/llm/types";
 import { extractTextContent } from "@/features/agent/components/utils/agentViewUtils";
 import type { ArtifactFileContentState } from "@/features/agent/components";
@@ -48,6 +49,8 @@ export function useAgentState() {
     resumeRun,
     retryStep,
     stopGeneration,
+    confirmToolCall,
+    rejectToolCall,
     reset,
   } = useAgent();
 
@@ -90,6 +93,9 @@ export function useAgentState() {
     resumeRun,
     retryStep,
     stopGeneration,
+    confirmToolCall,
+    rejectToolCall,
+    setActiveStepId: useAgentStore((s) => s.setActiveStepId),
     reset,
   };
 }

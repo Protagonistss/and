@@ -15,11 +15,19 @@ export interface DisplayStep {
 
 export interface AgentStepListProps {
   displaySteps: DisplayStep[];
+  activeStepId?: string | null;
+  onSelectStep?: (step: DisplayStep) => void;
   onEditStep?: (step: DisplayStep) => void;
   onRetryStep?: (step: DisplayStep) => void;
 }
 
-export function AgentStepList({ displaySteps, onEditStep, onRetryStep }: AgentStepListProps) {
+export function AgentStepList({
+  displaySteps,
+  activeStepId,
+  onSelectStep,
+  onEditStep,
+  onRetryStep,
+}: AgentStepListProps) {
   if (displaySteps.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center p-8">
@@ -40,8 +48,14 @@ export function AgentStepList({ displaySteps, onEditStep, onRetryStep }: AgentSt
           key={step.id}
           className={cn(
             "group relative rounded-lg p-3 transition-all duration-200",
-            step.status === "running" ? "bg-zinc-800/40" : "hover:bg-zinc-800/20"
+            step.id === activeStepId
+              ? "bg-zinc-800/60 ring-1 ring-zinc-700/60"
+              : step.status === "running"
+              ? "bg-zinc-800/40"
+              : "hover:bg-zinc-800/20",
+            onSelectStep && "cursor-pointer"
           )}
+          onClick={() => onSelectStep?.(step)}
         >
           {step.status === "running" && (
             <div className="absolute left-0 top-3 bottom-3 w-0.5 rounded-r-full bg-zinc-300 shadow-[0_0_8px_rgba(212,212,216,0.5)]" />
@@ -76,7 +90,10 @@ export function AgentStepList({ displaySteps, onEditStep, onRetryStep }: AgentSt
               <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                 {step.status === "blocked" && onRetryStep && (
                   <button
-                    onClick={() => onRetryStep(step)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRetryStep(step);
+                    }}
                     className="rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
                     title="Retry step"
                   >
@@ -85,7 +102,10 @@ export function AgentStepList({ displaySteps, onEditStep, onRetryStep }: AgentSt
                 )}
                 {step.status === "completed" && onEditStep && (
                   <button
-                    onClick={() => onEditStep(step)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEditStep(step);
+                    }}
                     className="rounded p-1 text-zinc-500 transition-colors hover:bg-zinc-700 hover:text-zinc-200"
                     title="Edit step"
                   >
