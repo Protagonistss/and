@@ -2,7 +2,7 @@ use crate::config::{ConfigManager, ProjectRecord};
 use crate::mcp::McpManager;
 use crate::utils::validate_project_path;
 use tauri::{AppHandle, State};
-use tauri_plugin_shell::ShellExt;
+use tauri_plugin_opener::OpenerExt;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -35,8 +35,8 @@ pub async fn open_config_folder(app: AppHandle) -> Result<(), String> {
     let config_dir = dirs::home_dir()
         .ok_or("Cannot find home directory")?
         .join(".slate");
-    app.shell()
-        .open(config_dir.to_string_lossy().to_string(), None)
+    app.opener()
+        .open_path(config_dir.to_string_lossy().to_string(), None::<&str>)
         .map_err(|e| format!("Failed to open: {}", e))?;
     Ok(())
 }

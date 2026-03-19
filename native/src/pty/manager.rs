@@ -61,7 +61,7 @@ impl PtyManager {
             .spawn_command(cmd)
             .map_err(|e| format!("Failed to spawn shell: {}", e))?;
 
-        let mut master = pair.master;
+        let master = pair.master;
 
         let reader = master
             .try_clone_reader()

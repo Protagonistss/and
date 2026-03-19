@@ -1,5 +1,5 @@
-use tauri::{command, AppHandle, Manager};
-use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager};
+use serde::Serialize;
 
 use super::PtyManager;
 use std::sync::{Arc, Mutex};
@@ -59,6 +59,6 @@ pub async fn pty_kill(
     id: String,
 ) -> Result<(), String> {
     let manager = app.state::<Arc<Mutex<PtyManager>>>();
-    let mut manager = manager.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let manager = manager.lock().map_err(|e| format!("Lock error: {}", e))?;
     manager.kill(&id)
 }

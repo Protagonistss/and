@@ -24,6 +24,7 @@
       ]
     },
     "shell:allow-open",
+    "opener:default",
     {
       "identifier": "shell:allow-spawn",
       "allow": [
